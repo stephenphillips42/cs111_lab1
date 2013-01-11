@@ -1,0 +1,109 @@
+// UCLA CS 111 Lab 1 command reading
+
+#include "command.h"
+#include "command-internals.h"
+
+#include <error.h>
+
+/* FIXME: You may need to add #include directives, macro definitions,
+   static function definitions, etc.  */
+#include "alloc.h"
+#include "ctype.h"
+
+#include "stdio.h"
+
+/* FIXME: Define the type 'struct command_stream' here.  This should
+   complete the incomplete type declaration in command.h.  */
+struct command_stream {
+  int (*get)(void *);
+  void * arg;
+};
+
+#define GET(cmd_strm) (char)cmd_strm->get(cmd_strm->arg)
+// What is this?
+;
+bool 
+is_simple_cmd_char(char i) {
+  return isalnum(i) || i == '!' || i == '+' || i == ',' || i == '-' 
+      || i == '.' || i == '/' || i == ':' || i == '@' || i == '^' || i == '_';
+  // Switch table? Faster?
+}
+
+command_stream_t
+make_command_stream (int (*get_byte) (void *),
+		     void *arg)
+{
+  /* FIXME: Replace this with your implementation.  You may need to
+     add auxiliary functions and otherwise modify the source code.
+     You can also use external functions defined in the GNU C Library.  */
+  //error (1, 0, "command reading not yet implemented");
+  command_stream_t s = (command_stream_t)checked_malloc(sizeof(struct command_stream));
+  s->get = get_byte;
+  s->arg = arg;
+  return s;
+}
+
+command_t
+read_command_stream (command_stream_t s)
+{
+  /* FIXME: Replace this with your implementation too.  */
+  // TODO: Move all this to an auxilary function which returns the char**
+  // TODO: How do we use free? (Get error when we do use it) Is there a header we must use?
+  size_t i;
+
+  // Tokens variables
+  size_t ntokens = 0;
+  size_t nchars = 0;
+  size_t token_size = 256;
+  size_t total_tokens = 512;
+  char **tokens = checked_malloc(total_tokens*sizeof(char*));
+  tokens[ntokens] = checked_malloc(256*sizeof(char));
+
+  // White space flags
+  bool in_word = false;
+
+  char c;
+  while((c = GET(s)) > 0)
+    {
+      if(is_simple_cmd_char(c))
+        {
+          in_word = true;
+          if(token_size < nchars)
+            {
+              checked_grow_alloc((void*)tokens[ntokens], &token_size);
+            }
+          tokens[ntokens][nchars] = c;
+          nchars++;
+        }
+      else if(in_word)
+        {
+          ntokens++;
+          nchars = 0;
+          token_size = 256;
+          tokens[ntokens] = checked_malloc(256*sizeof(char));
+          
+          if(total_tokens < ntokens)
+            {
+              checked_grow_alloc((void*)tokens, &total_tokens);
+            }
+
+          in_word = false;
+        }
+
+    }
+  
+  if(total_tokens < ntokens)
+    {
+      checked_grow_alloc((void*)tokens, &total_tokens);
+    }
+  tokens[ntokens] = 0;
+  ntokens++;
+
+  for(i = 0; tokens[i]; i++) {
+    printf("%s\n", tokens[i]);
+  }
+  
+  printf("%d %d %d %d\n", ntokens, nchars, token_size, total_tokens);
+  //error (1, 0, "command reading not yet implemented");
+  return 0;
+}

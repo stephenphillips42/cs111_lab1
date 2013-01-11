@@ -1,0 +1,27 @@
+Questions:
+- What constitutes a command stream?
+- Can we load the whole shell script into memory? Is that reasonable?
+- What constitutes as a word in a command struct? The whole command like bob -d bill?
+- What is checked grow alloc? How is it different from checked realloc?
+
+
+Grammar:
+Command
+Simple_Command => [A-Za-z0-9!%+,-./:@^_]+
+
+Command => Or_Command
+Command => And_Command
+Command => Sequence_Command
+Command => Pipe_Command
+Command => Unit_Command
+
+Unit_Command => Simple_Command
+Unit_Command => Subshell_Command
+
+Or_Command => Command '||' Unit_Command
+And_Command => Command '&&' Unit_Command
+Pipe_Command => Command '|' Unit_Command
+Sequence_Command => Command ';' Unit_Command
+Subshell_Command => '(' Command ')'
+
+
