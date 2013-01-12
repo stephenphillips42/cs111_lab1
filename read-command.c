@@ -15,15 +15,16 @@
 
 enum State
   {
-    START,              // Initial State
-    NORMAL,             // Simple Command State
-    PIPE_CONTINUE,      // State just after a Pipe (|) 
-    OR_CONTINUE,        // State just after an Or (||)
-    AMPERSAND_CONTINUE, // State just after an Ampersand (&)
-    AND_CONTINUE,       // State just after an And (&&)
-    SEMI_COLON_CONTINUE // State just after a semicolon (;)
+    START,       // Initial State
+    NORMAL,      // Simple Command State
+    PIPE,        // State just after a Pipe (|)
+    PIPE_SPACE,  // State in 
+    OR,          // State just after an Or (||)
+    AMPERSAND,   // State just after an Ampersand (&)
+    AND,         // State just after an And (&&)
+    SEMI_COLON,  // State just after a semicolon (;)
+    FINAL        // Finish states
   };
-enum State g_state = START;
 
 /* FIXME: Define the type 'struct command_stream' here.  This should
    complete the incomplete type declaration in command.h.  */
@@ -62,120 +63,67 @@ make_command_stream (int (*get_byte) (void *),
   return s;
 }
 
-char *
-read_line (command_stream_t s) 
-{
-  size_t line_capacity = 64;
-  size_t line_size = 0;
-  char * line = (char *) checked_malloc (64 * sizeof (char));
-  
-  // Read the line
-  int i;
-  i = GET(s);
-  while(i > 0 && i != '\n')
-    {
-      char c = (char)i;
-      CHECK_GROW(line, line_size, line_capacity);
-
-      line[line_size] = c;
-      line_size++;
-      i = GET(s);
-    }
-
-  // Error checking
-  if(i < 0)
-    {
-      error (1, 0, "Error in standard input");
-    }
-  // Should we do this error check?
-  if(line_size == 0)
-    {
-      free (line);
-      return 0;
-    }
-
-  // Terminate with null byte
-  CHECK_GROW(line, line_size, line_capacity);
-  line[line_size] = 0;
-
-  printf("%s\n", line);
-  return line;
-}
-
 command_t
 read_command_stream (command_stream_t s)
 {
   /* FIXME: Replace this with your implementation too.  */
-  size_t total_size = 0;
-  //size_t total_capacity = 8;
-  size_t token_size = 0;
-  size_t token_capacity = 16;
+  // State of the Parser
+  enum State state = START;
+
+  // Size variables of the stacks and arrays
+  size_t tokens_size = 0;
+  size_t tokens_capacity = 8;
+  size_t word_size = 0;
+  size_t word_capacity = 16;
+
+  size_t cmdstack_top = 0;
+  size_t cmdstack_capacity = 8;
+  size_t opstack_top = 0;
+  size_t opstack_capacity = 8;
   
-  char ** tokens = (char **) checked_malloc (8 * sizeof (char *));
-  tokens[total_size] = (char *) checked_malloc (16 * sizeof (char));
-  char * line;
-  while(!(line = read_line(s)));
+  // Token arrays
+  char **tokens = (char **) checked_malloc (tokens_capacity * sizeof (char *));
+  char *word = (char *) checked_malloc (word_capacity * sizeof (char));
 
-  int i;
-  for(i = 0; line[i]; i++)
-    switch(g_state)
+  // Stacks
+  command_t *cmd_stack = (command_t *) 
+      checked_malloc (cmdstack_capacity * sizeof (command_t));
+  enum command_type *op_stack = (enum command_type *) 
+      checked_malloc (opstack_capacity * sizeof (enum command_type));
+
+  while(state != FINAL)
     {
-      case START:
-      case NORMAL:
-        switch(line[i])
-          {
-            case ';':
-              break;
-            case '|':
-              g_state = PIPE_CONTINUE;
-              break;
-            case '&':
-              g_state = AMPERSAND_CONTINUE;
-              break;
-            case '>':
-            case '<':
-            case '(':
-            case ')':
-              printf ("SPECIAL!!");
-              break;
-            case ' ':
-            case '\t':
-            case '\r':
-              break;
-            default:
-              CHECK_GROW(tokens[total_size], token_size, token_capacity);
-              tokens[total_size][token_size] = line[i];
-              token_size++;
-          }
-        break;
-      case PIPE_CONTINUE:
-        if(line[i] == '|')
-          {
-            g_state = OR_CONTINUE;
-            break;
-          }
-        else
-          {
-            // Add code for Pipe continue
-            break;
-          }
-      case OR_CONTINUE:
-      case AMPERSAND_CONTINUE:
-        if(line[i] == '&')
-          {
-            g_state = OR_CONTINUE;
-            break;
-          }
-        else
-          {
-            error (1, 0, "Ampersand not implemented");
-            break;
-          }
-      case AND_CONTINUE:
-        break;
-    }
-  printf("%s\n", tokens[total_size]);
+      int i = GET(s);
+      if (i <= 0)
+        {
+          error (1, 0, "Error in standard input");
+        }
+      
+      char c = (char)i;
+      CHECK_GROW(word, word_size, word_capacity);
 
+      // Check state
+      switch(state) 
+        {
+          case START:
+            break;
+          case NORMAL:
+            break;
+          case PIPE:
+            break;
+          case OR:
+            break;
+          case AMPERSAND:
+            break;
+          case AND:
+            break;
+          case SEMI_COLON:
+            break;
+          default:
+            break;
+        }
+      
+    }
 
   //error (1, 0, "command reading not yet implemented");
   return 0;
