@@ -17,6 +17,8 @@ enum State
   {
     START,       // Initial State
     NORMAL,      // Simple Command State
+    SPACE,       // State while in whitespace
+    SPECIAL,     // State just after a backslash (\)
     PIPE,        // State just after a Pipe (|)
     PIPE_SPACE,  // State in 
     OR,          // State just after an Or (||)
@@ -33,6 +35,31 @@ struct command_stream {
   void * arg;
 };
 
+typedef struct string_ {
+  char * arr;
+  size_t size;
+  size_t capacity;
+} string;
+
+typedef struct token_array_
+{
+  char **arr;
+  size_t size;
+  size_t capacity;
+} token_array;
+
+typedef struct command_stack_ {
+  command_t *stack;
+  size_t top;
+  size_t capacity;
+} command_stack;
+
+typedef struct operator_stack_ {
+  enum command_type *stack;
+  size_t top;
+  size_t capacity;
+} operator_stack;
+
 #define GET(cmd_strm) cmd_strm->get(cmd_strm->arg)
 #define CHECK_GROW(arr, size, capacity) \
     if (capacity < size) \
@@ -42,7 +69,8 @@ struct command_stream {
 
 // Need this?
 bool 
-is_simple_cmd_char (char i) {
+is_simple_cmd_char (char i) 
+{
   return isalnum(i) || i == '!' || i == '+' || i == ',' || i == '-' 
       || i == '.' || i == '/' || i == ':' || i == '@' || i == '^' || i == '_';
   // Switch table? Faster?
@@ -63,6 +91,72 @@ make_command_stream (int (*get_byte) (void *),
   return s;
 }
 
+void
+add_char (string *str, char c)
+{
+  if(str->capacity < str->size)
+    {
+      checked_grow_alloc ( (void *)str->arr, &str->capacity);
+    }
+  str->arr[str->size] = c;
+  str->size++;
+}
+
+void
+next_word (token_array *tokens, string *word)
+{
+  if(word->size == 0) // For cases of multiple spaces in a row
+    return;
+
+  CHECK_GROW(word->arr, word->size, word->capacity)
+
+  word->arr[word->size] = 0;
+
+  CHECK_GROW(tokens->arr, tokens->size, tokens->capacity)
+
+  tokens->arr[tokens->size] = word->arr;
+
+  printf("%s %d\n", word->arr, word->size);
+
+  word->size = 0;
+  word->capacity = 16;
+  word->arr = (char *) checked_malloc (word->capacity * sizeof (char));
+}
+
+void
+add_tokens (token_array *tokens, command_stack *cmd_stack)
+{
+  CHECK_GROW(tokens->arr, tokens->size, tokens->capacity);
+
+  tokens->arr[tokens->size] = 0;
+
+  CHECK_GROW(cmd_stack->stack, cmd_stack->top, cmd_stack->capacity);
+
+  command_t cmd = (command_t) checked_malloc (sizeof (struct command));
+  cmd->type = SIMPLE_COMMAND;
+  cmd->status = -1;
+  cmd->u.word = tokens->arr;
+  // This is the part that we will implement later with input and output
+  
+  // Reset Tokens
+  tokens->size = 0;
+  tokens->capacity = 8;
+  tokens->arr = (char **) checked_malloc (tokens->capacity * sizeof (char *));
+
+  cmd_stack->stack[cmd_stack->top] = cmd;
+  cmd_stack->top++;
+}
+
+void add_op (enum command_type type, operator_stack *op_stack)
+{
+  CHECK_GROW(op_stack->stack, op_stack->top, op_stack->capacity);
+
+  // Add logic to pop operators off the stack of less than or equal precedence
+
+  op_stack->stack[op_stack->top] = type;
+  op_stack->top++;
+}
+
 command_t
 read_command_stream (command_stream_t s)
 {
@@ -70,46 +164,138 @@ read_command_stream (command_stream_t s)
   // State of the Parser
   enum State state = START;
 
-  // Size variables of the stacks and arrays
-  size_t tokens_size = 0;
-  size_t tokens_capacity = 8;
-  size_t word_size = 0;
-  size_t word_capacity = 16;
-
-  size_t cmdstack_top = 0;
-  size_t cmdstack_capacity = 8;
-  size_t opstack_top = 0;
-  size_t opstack_capacity = 8;
-  
   // Token arrays
-  char **tokens = (char **) checked_malloc (tokens_capacity * sizeof (char *));
-  char *word = (char *) checked_malloc (word_capacity * sizeof (char));
+  token_array tokens;
+  tokens.size = 0;
+  tokens.capacity = 8;
+  tokens.arr = (char **) checked_malloc (tokens.capacity * sizeof (char *));
+
+  string word;
+  word.size = 0;
+  word.capacity = 16;
+  word.arr = (char *) checked_malloc (word.capacity * sizeof (char));
 
   // Stacks
-  command_t *cmd_stack = (command_t *) 
-      checked_malloc (cmdstack_capacity * sizeof (command_t));
-  enum command_type *op_stack = (enum command_type *) 
-      checked_malloc (opstack_capacity * sizeof (enum command_type));
+  //command_stack cmd_stack;
+  //cmd_stack.size = 0; 
+  //cmd_stack.capacity = 16;
+  //cmd_stack.stack = 
+  //    checked_malloc (cmdstack_capacity * sizeof (command_t));
+
+  //operator_stack op_stack;
+  //op_stack.top = 0;
+  //op_stack.capacity = 8;
+  //op_stack.stack = (enum command_type *) 
+  //    checked_malloc (op_stack.capacity * sizeof (enum command_type));
+
 
   while(state != FINAL)
     {
       int i = GET(s);
-      if (i <= 0)
+      if (i < 0)
         {
           error (1, 0, "Error in standard input");
         }
+      else if(i == 0)
+        {
+          error (1, 0, "End of file");
+        }
       
       char c = (char)i;
-      CHECK_GROW(word, word_size, word_capacity);
-
+      
       // Check state
       switch(state) 
         {
           case START:
+            switch(c)
+              {
+                case '|':
+                case '&':
+                case ';':
+                  error (1, 0, "Invalid character at start");
+                  break;
+                case ' ':
+                case '\t':
+                case '\n':
+                  // Loop back to original state
+                  break;
+                default:
+                  add_char (&word, c);
+                  state = NORMAL;
+                  break;
+              }
             break;
           case NORMAL:
+            switch(c)
+              {
+                // TODO: We will add these later
+                //case '<': 
+                //  break;
+                //case '>':
+                //  break;
+                case '|':
+                  state = PIPE;
+                  return 0;
+                  break;
+                case '&':
+                  state = AMPERSAND;
+                  return 0;
+                  break;
+                case ';':
+                  state = SEMI_COLON;
+                  return 0;
+                  break;
+                case '\\':
+                  state = SPECIAL;
+                  break;
+                case ' ':
+                case '\t':
+                case '\n':
+                  next_word (&tokens, &word);
+                  state = SPACE;
+                  break;
+                default:
+                  add_char (&word, c);
+                  break;
+              }
+            break;
+          case SPACE:
+            switch(c)
+              {
+                // TODO: We will add these later
+                //case '<': 
+                //  break;
+                //case '>':
+                //  break;
+                case '|':
+                  state = PIPE;
+                  return 0;
+                  break;
+                case '&':
+                  state = AMPERSAND;
+                  return 0;
+                  break;
+                case ';':
+                  state = SEMI_COLON;
+                  return 0;
+                  break;
+                case ' ':
+                case '\t':
+                case '\n':
+                  // Loop back to original state
+                  break;
+                default:
+                  add_char (&word, c);
+                  state = NORMAL;
+                  break;
+              }
+            break;
+          case SPECIAL:
+            add_char(&word, c);
             break;
           case PIPE:
+            break;
+          case PIPE_SPACE:
             break;
           case OR:
             break;
@@ -122,7 +308,6 @@ read_command_stream (command_stream_t s)
           default:
             break;
         }
-      
     }
 
   //error (1, 0, "command reading not yet implemented");
