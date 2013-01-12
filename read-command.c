@@ -17,7 +17,6 @@ enum State
   {
     START,       // Initial State
     NORMAL,      // Simple Command State
-    SPACE,       // State while in whitespace
     SPECIAL,     // State just after a backslash (\)
     PIPE,        // State just after a Pipe (|)
     PIPE_SPACE,  // State in 
@@ -64,7 +63,7 @@ typedef struct operator_stack_ {
 #define CHECK_GROW(arr, size, capacity) \
     if (capacity < size) \
       { \
-        checked_grow_alloc ( (void *) arr, &capacity); \
+        checked_grow_alloc ((void *) arr, &capacity); \
       }
 
 // Need this?
@@ -73,7 +72,29 @@ is_simple_cmd_char (char i)
 {
   return isalnum(i) || i == '!' || i == '+' || i == ',' || i == '-' 
       || i == '.' || i == '/' || i == ':' || i == '@' || i == '^' || i == '_';
-  // Switch table? Faster?
+  // Switch  table? Faster?
+}
+
+int
+op_precedence (enum command_type type)
+{
+  switch (type)
+    {
+      case AND_COMMAND:
+        return 0;
+      case SEQUENCE_COMMAND:
+        return 0;
+      case OR_COMMAND:
+        return 0;
+      case PIPE_COMMAND:
+        return 0;
+      case SIMPLE_COMMAND:
+        return 0;
+      case SUBSHELL_COMMAND:
+        return 0;
+      default:
+        return 0;
+    }
 }
 
 command_stream_t
@@ -94,10 +115,8 @@ make_command_stream (int (*get_byte) (void *),
 void
 add_char (string *str, char c)
 {
-  if(str->capacity < str->size)
-    {
-      checked_grow_alloc ( (void *)str->arr, &str->capacity);
-    }
+  CHECK_GROW(str->arr, str->size, str->capacity);
+
   str->arr[str->size] = c;
   str->size++;
 }
@@ -115,8 +134,7 @@ next_word (token_array *tokens, string *word)
   CHECK_GROW(tokens->arr, tokens->size, tokens->capacity)
 
   tokens->arr[tokens->size] = word->arr;
-
-  printf("%s %d\n", word->arr, word->size);
+  tokens->size++;
 
   word->size = 0;
   word->capacity = 16;
@@ -137,6 +155,8 @@ add_tokens (token_array *tokens, command_stack *cmd_stack)
   cmd->status = -1;
   cmd->u.word = tokens->arr;
   // This is the part that we will implement later with input and output
+  cmd->input = 0;
+  cmd->output = 0;
   
   // Reset Tokens
   tokens->size = 0;
@@ -147,11 +167,38 @@ add_tokens (token_array *tokens, command_stack *cmd_stack)
   cmd_stack->top++;
 }
 
-void add_op (enum command_type type, operator_stack *op_stack)
+void add_op (enum command_type type, operator_stack *op_stack, 
+                command_stack *cmd_stack)
 {
   CHECK_GROW(op_stack->stack, op_stack->top, op_stack->capacity);
 
   // Add logic to pop operators off the stack of less than or equal precedence
+  while (op_stack->top > 0 && op_precedence (type) <= 
+            op_precedence (op_stack->stack[op_stack->top]))
+    {
+
+      // Create new command of type on top of op_stack
+      command_t cmd = (command_t) 
+        checked_malloc (sizeof (struct command));
+      cmd->type = type;
+      cmd->status = -1;
+      cmd->input = 0;
+      cmd->output = 0; // TODO: Fix these if needed
+
+      // Pop the top two commands off the stack
+      cmd_stack->top--;
+      cmd->u.command[1] = cmd_stack->stack[cmd_stack->top];
+      cmd_stack->top--;
+      cmd->u.command[0] = cmd_stack->stack[cmd_stack->top];
+
+      // Push the newly created command on the top
+      cmd_stack->stack[cmd_stack->top] = cmd;
+      print_command(cmd);
+      cmd_stack->top++;
+
+      // Pop the operator off the operator stack
+      op_stack->top--;
+    }
 
   op_stack->stack[op_stack->top] = type;
   op_stack->top++;
@@ -176,17 +223,17 @@ read_command_stream (command_stream_t s)
   word.arr = (char *) checked_malloc (word.capacity * sizeof (char));
 
   // Stacks
-  //command_stack cmd_stack;
-  //cmd_stack.size = 0; 
-  //cmd_stack.capacity = 16;
-  //cmd_stack.stack = 
-  //    checked_malloc (cmdstack_capacity * sizeof (command_t));
+  command_stack cmd_stack;
+  cmd_stack.top = 0; 
+  cmd_stack.capacity = 16;
+  cmd_stack.stack = 
+      checked_malloc (cmd_stack.capacity * sizeof (command_t));
 
-  //operator_stack op_stack;
-  //op_stack.top = 0;
-  //op_stack.capacity = 8;
-  //op_stack.stack = (enum command_type *) 
-  //    checked_malloc (op_stack.capacity * sizeof (enum command_type));
+  operator_stack op_stack;
+  op_stack.top = 0;
+  op_stack.capacity = 8;
+  op_stack.stack = (enum command_type *) 
+      checked_malloc (op_stack.capacity * sizeof (enum command_type));
 
 
   while(state != FINAL)
@@ -194,6 +241,8 @@ read_command_stream (command_stream_t s)
       int i = GET(s);
       if (i < 0)
         {
+          printf("%d\n", i);
+          printf("%d\n", cmd_stack.top);
           error (1, 0, "Error in standard input");
         }
       else if(i == 0)
@@ -202,12 +251,12 @@ read_command_stream (command_stream_t s)
         }
       
       char c = (char)i;
-      
+
       // Check state
-      switch(state) 
+      switch (state) 
         {
           case START:
-            switch(c)
+            switch (c)
               {
                 case '|':
                 case '&':
@@ -226,72 +275,61 @@ read_command_stream (command_stream_t s)
               }
             break;
           case NORMAL:
-            switch(c)
+            switch (c)
               {
                 // TODO: We will add these later
                 //case '<': 
                 //  break;
                 //case '>':
                 //  break;
-                case '|':
-                  state = PIPE;
-                  return 0;
-                  break;
-                case '&':
-                  state = AMPERSAND;
-                  return 0;
-                  break;
-                case ';':
-                  state = SEMI_COLON;
-                  return 0;
-                  break;
-                case '\\':
-                  state = SPECIAL;
-                  break;
+                //case '|':
+                //  state = PIPE;
+                //  return 0;
+                //  break;
+                //case '&':
+                //  state = AMPERSAND;
+                //  return 0;
+                //  break;
+                //case ';':
+                //  state = SEMI_COLON;
+                //  return 0;
+                //  break;
+                //case '\\':
+                //  state = SPECIAL;
+                //  break;
                 case ' ':
                 case '\t':
+                  next_word (&tokens, &word);
+                  break;
                 case '\n':
                   next_word (&tokens, &word);
-                  state = SPACE;
-                  break;
-                default:
-                  add_char (&word, c);
-                  break;
-              }
-            break;
-          case SPACE:
-            switch(c)
-              {
-                // TODO: We will add these later
-                //case '<': 
-                //  break;
-                //case '>':
-                //  break;
-                case '|':
-                  state = PIPE;
-                  return 0;
-                  break;
-                case '&':
-                  state = AMPERSAND;
-                  return 0;
-                  break;
-                case ';':
+                  add_tokens (&tokens, &cmd_stack);
                   state = SEMI_COLON;
-                  return 0;
-                  break;
-                case ' ':
-                case '\t':
-                case '\n':
-                  // Loop back to original state
                   break;
                 default:
                   add_char (&word, c);
-                  state = NORMAL;
                   break;
               }
             break;
           case SPECIAL:
-            add_char(&word, c);
+            if(c != '\n')
+              add_char(&word, c);
+            break;
+          case SEMI_COLON:
+            switch (c)
+              {
+                // TODO: Deal with error and special cases later
+                case ' ':
+                case '\t':
+                case '\n':
+                  // Ignore whitespace in this state
+                  break;
+                default:
+                  add_op (SEQUENCE_COMMAND, &op_stack, &cmd_stack);
+                  add_char (&word, c);
+                  state = NORMAL;
+                  break;
+              }
             break;
           case PIPE:
             break;
@@ -302,8 +340,6 @@ read_command_stream (command_stream_t s)
           case AMPERSAND:
             break;
           case AND:
-            break;
-          case SEMI_COLON:
             break;
           default:
             break;
