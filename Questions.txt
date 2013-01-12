@@ -7,7 +7,9 @@ Questions:
 
 Grammar:
 Command
-Simple_Command => [A-Za-z0-9!%+,-./:@^_]+
+Simple_Command => Word '\s'+ Simple_Command
+Simple_Command => Word
+Word => [A-Za-z0-9!%+,-./:@^_]+
 
 Command => Or_Command
 Command => And_Command

@@ -13,6 +13,18 @@
 
 #include "stdio.h"
 
+enum State
+  {
+    START,              // Initial State
+    NORMAL,             // Simple Command State
+    PIPE_CONTINUE,      // State just after a Pipe (|) 
+    OR_CONTINUE,        // State just after an Or (||)
+    AMPERSAND_CONTINUE, // State just after an Ampersand (&)
+    AND_CONTINUE,       // State just after an And (&&)
+    SEMI_COLON_CONTINUE // State just after a semicolon (;)
+  };
+enum State g_state = START;
+
 /* FIXME: Define the type 'struct command_stream' here.  This should
    complete the incomplete type declaration in command.h.  */
 struct command_stream {
@@ -27,6 +39,7 @@ struct command_stream {
         checked_grow_alloc ( (void *) arr, &capacity); \
       }
 
+// Need this?
 bool 
 is_simple_cmd_char (char i) {
   return isalnum(i) || i == '!' || i == '+' || i == ',' || i == '-' 
@@ -105,27 +118,61 @@ read_command_stream (command_stream_t s)
 
   int i;
   for(i = 0; line[i]; i++)
+    switch(g_state)
     {
-      switch(line[i])
-        {
-          case ';':
-          case '|':
-          case '&':
-          case '>':
-          case '<':
-          case '(':
-          case ')':
-            printf ("SPECIAL!!");
+      case START:
+      case NORMAL:
+        switch(line[i])
+          {
+            case ';':
+              break;
+            case '|':
+              g_state = PIPE_CONTINUE;
+              break;
+            case '&':
+              g_state = AMPERSAND_CONTINUE;
+              break;
+            case '>':
+            case '<':
+            case '(':
+            case ')':
+              printf ("SPECIAL!!");
+              break;
+            case ' ':
+            case '\t':
+            case '\r':
+              break;
+            default:
+              CHECK_GROW(tokens[total_size], token_size, token_capacity);
+              tokens[total_size][token_size] = line[i];
+              token_size++;
+          }
+        break;
+      case PIPE_CONTINUE:
+        if(line[i] == '|')
+          {
+            g_state = OR_CONTINUE;
             break;
-          case ' ':
-          case '\t':
-          case '\r':
+          }
+        else
+          {
+            // Add code for Pipe continue
             break;
-          default:
-            CHECK_GROW(tokens[total_size], token_size, token_capacity);
-            tokens[total_size][token_size] = line[i];
-            token_size++;
-        }
+          }
+      case OR_CONTINUE:
+      case AMPERSAND_CONTINUE:
+        if(line[i] == '&')
+          {
+            g_state = OR_CONTINUE;
+            break;
+          }
+        else
+          {
+            error (1, 0, "Ampersand not implemented");
+            break;
+          }
+      case AND_CONTINUE:
+        break;
     }
   printf("%s\n", tokens[total_size]);
 
