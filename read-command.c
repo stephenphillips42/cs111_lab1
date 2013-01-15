@@ -13,18 +13,27 @@
 
 #include "stdio.h"
 
+/*
+TODO:
+1) Fix the input and output varibles for simple commands
+2) Create a parenthesis operation for subshell commands
+3) Error handling - double check and make more robust
+4) Comments (different state for every state)
+*/
+
 enum State
   {
-    START,       // Initial State
-    NORMAL,      // Simple Command State
-    SPECIAL,     // State just after a backslash (\)
-    PIPE,        // State just after a Pipe (|)
-    PIPE_SPACE,  // State in 
-    OR,          // State just after an Or (||)
-    AMPERSAND,   // State just after an Ampersand (&)
-    AND,         // State just after an And (&&)
-    SEMI_COLON,  // State just after a semicolon (;)
-    FINAL        // Finish states
+    START,              // Initial State
+    NORMAL,             // Simple Command State
+    SPECIAL,            // State just after a backslash (\)
+    COMMENT_NORMAL,     // Normal comment
+    PIPE,               // State just after a Pipe (|)
+    PIPE_SPACE,         // State just after a Pipe and whitespace
+    OR,                 // State just after an Or (||)
+    AMPERSAND,          // State just after an Ampersand (&)
+    AND,                // State just after an And (&&)
+    SEMI_COLON,         // State just after a semicolon (;)
+    FINAL               // Finish states
   };
 
 /* FIXME: Define the type 'struct command_stream' here.  This should
@@ -40,8 +49,7 @@ typedef struct string_ {
   size_t capacity;
 } string;
 
-typedef struct token_array_
-{
+typedef struct token_array_ {
   char **arr;
   size_t size;
   size_t capacity;
@@ -80,20 +88,19 @@ op_precedence (enum command_type type)
 {
   switch (type)
     {
+      case SUBSHELL_COMMAND:
+        return 4;
+      case SIMPLE_COMMAND:
+        return 3;
+      case PIPE_COMMAND:
+        return 2;
       case AND_COMMAND:
-        return 0;
+      case OR_COMMAND:
+        return 1;
       case SEQUENCE_COMMAND:
         return 0;
-      case OR_COMMAND:
-        return 0;
-      case PIPE_COMMAND:
-        return 0;
-      case SIMPLE_COMMAND:
-        return 0;
-      case SUBSHELL_COMMAND:
-        return 0;
       default:
-        return 0;
+        return 172;
     }
 }
 
@@ -167,6 +174,31 @@ add_tokens (token_array *tokens, command_stack *cmd_stack)
   cmd_stack->top++;
 }
 
+void
+pop_op_stack (operator_stack *op_stack, command_stack *cmd_stack)
+{
+  // Pop the operator off the operator stack
+  op_stack->top--;
+
+  // Create new command of type on top of op_stack
+  command_t cmd = (command_t) 
+    checked_malloc (sizeof (struct command));
+  cmd->type = op_stack->stack[op_stack->top];
+  cmd->status = -1;
+  cmd->input = 0;
+  cmd->output = 0; // TODO: Fix these if needed
+
+  // Pop the top two commands off the stack
+  cmd_stack->top--;
+  cmd->u.command[1] = cmd_stack->stack[cmd_stack->top];
+  cmd_stack->top--;
+  cmd->u.command[0] = cmd_stack->stack[cmd_stack->top];
+
+  // Push the newly created command on the top
+  cmd_stack->stack[cmd_stack->top] = cmd;
+  cmd_stack->top++;
+}
+
 void add_op (enum command_type type, operator_stack *op_stack, 
                 command_stack *cmd_stack)
 {
@@ -174,34 +206,22 @@ void add_op (enum command_type type, operator_stack *op_stack,
 
   // Add logic to pop operators off the stack of less than or equal precedence
   while (op_stack->top > 0 && op_precedence (type) <= 
-            op_precedence (op_stack->stack[op_stack->top]))
+            op_precedence (op_stack->stack[op_stack->top - 1]))
     {
-
-      // Create new command of type on top of op_stack
-      command_t cmd = (command_t) 
-        checked_malloc (sizeof (struct command));
-      cmd->type = type;
-      cmd->status = -1;
-      cmd->input = 0;
-      cmd->output = 0; // TODO: Fix these if needed
-
-      // Pop the top two commands off the stack
-      cmd_stack->top--;
-      cmd->u.command[1] = cmd_stack->stack[cmd_stack->top];
-      cmd_stack->top--;
-      cmd->u.command[0] = cmd_stack->stack[cmd_stack->top];
-
-      // Push the newly created command on the top
-      cmd_stack->stack[cmd_stack->top] = cmd;
-      print_command(cmd);
-      cmd_stack->top++;
-
-      // Pop the operator off the operator stack
-      op_stack->top--;
+      pop_op_stack(op_stack, cmd_stack);
     }
 
   op_stack->stack[op_stack->top] = type;
   op_stack->top++;
+}
+
+void
+finish_op_stack (operator_stack *op_stack, command_stack *cmd_stack)
+{
+  while (op_stack->top > 0)
+    {
+      pop_op_stack(op_stack, cmd_stack);
+    }
 }
 
 command_t
@@ -241,13 +261,10 @@ read_command_stream (command_stream_t s)
       int i = GET(s);
       if (i < 0)
         {
-          printf("%d\n", i);
-          printf("%d\n", cmd_stack.top);
-          error (1, 0, "Error in standard input");
-        }
-      else if(i == 0)
-        {
-          error (1, 0, "End of file");
+          finish_op_stack (&op_stack, &cmd_stack);
+          state = FINAL;
+          print_command (cmd_stack.stack[0]);
+          continue;
         }
       
       char c = (char)i;
@@ -268,6 +285,9 @@ read_command_stream (command_stream_t s)
                 case '\n':
                   // Loop back to original state
                   break;
+                case '#':
+                  state = COMMENT_NORMAL;
+                  break;
                 default:
                   add_char (&word, c);
                   state = NORMAL;
@@ -282,18 +302,21 @@ read_command_stream (command_stream_t s)
                 //  break;
                 //case '>':
                 //  break;
-                //case '|':
-                //  state = PIPE;
-                //  return 0;
-                //  break;
-                //case '&':
-                //  state = AMPERSAND;
-                //  return 0;
-                //  break;
-                //case ';':
-                //  state = SEMI_COLON;
-                //  return 0;
-                //  break;
+                case '|':
+                  next_word (&tokens, &word);
+                  add_tokens (&tokens, &cmd_stack);
+                  state = PIPE;
+                  break;
+                case '&':
+                  next_word (&tokens, &word);
+                  add_tokens (&tokens, &cmd_stack);
+                  state = AMPERSAND;
+                  break;
+                case ';':
+                  next_word (&tokens, &word);
+                  add_tokens (&tokens, &cmd_stack);
+                  state = SEMI_COLON;
+                  break;
                 //case '\\':
                 //  state = SPECIAL;
                 //  break;
@@ -304,6 +327,7 @@ read_command_stream (command_stream_t s)
                 case '\n':
                   next_word (&tokens, &word);
                   add_tokens (&tokens, &cmd_stack);
+                  //state = FINAL;
                   state = SEMI_COLON;
                   break;
                 default:
@@ -331,15 +355,106 @@ read_command_stream (command_stream_t s)
                   break;
               }
             break;
+          case COMMENT_NORMAL:
+            switch (c)
+              {
+                case '\n':
+                  state = NORMAL;
+                  break;
+                default:
+                  // Do nothing until hitting newline
+                  break;
+              }
+            break;
           case PIPE:
+            switch (c)
+              {
+                case ' ':
+                case '\t':
+                case '\n':
+                  add_op (PIPE_COMMAND, &op_stack, &cmd_stack);
+                  state = PIPE_SPACE;
+                  break;
+                case '|':
+                  add_op (OR_COMMAND, &op_stack, &cmd_stack);
+                  state = OR;
+                  break;
+                case '&':
+                case ';':
+                  error (1, 0, "Incomplete pipe");
+                  break;
+                default:
+                  add_char (&word, c);
+                  add_op(PIPE_COMMAND, &op_stack, &cmd_stack);
+                  state = NORMAL;
+                  break;
+              }
             break;
           case PIPE_SPACE:
+            switch (c)
+              {
+                case ' ':
+                case '\t':
+                case '\n':
+                  break;
+                case '&':
+                case '|':
+                case ';':
+                  error (1, 0, "Incomplete Pipe");
+                  break;
+                default:
+                  add_char (&word, c);
+                  state = NORMAL;
+                  break;
+              }
             break;
           case OR:
+            switch (c)
+              {
+                case ' ':
+                case '\t':
+                case '\n':
+                  break;
+                case '&':
+                case '|':
+                case ';':
+                  error (1, 0, "Incomplete Or");
+                  break;
+                default:
+                  add_char (&word, c);
+                  state = NORMAL;
+                  break;
+              }
             break;
           case AMPERSAND:
+            switch (c)
+              {
+                case '&':
+                  add_op (AND_COMMAND, &op_stack, &cmd_stack);
+                  state = AND;                  
+                  break;
+                default:
+                  error (1, 0, "Incomplete And");
+                  break;
+              }
             break;
           case AND:
+            switch (c)
+              {
+                case ' ':
+                case '\t':
+                case '\n':
+                  break;
+                case '&':
+                case '|':
+                case ';':
+                  error (1, 0, "Incomplete And");
+                  break;
+                default:
+                  add_char (&word, c);
+                  state = NORMAL;
+                  break;
+              }
             break;
           default:
             break;
