@@ -283,7 +283,7 @@ read_command_stream (command_stream_t s)
                 case ' ':
                 case '\t':
                 case '\n':
-                  // Loop back to original state
+                  // Loop back to start state
                   break;
                 case '#':
                   state = COMMENT_NORMAL;
@@ -327,8 +327,7 @@ read_command_stream (command_stream_t s)
                 case '\n':
                   next_word (&tokens, &word);
                   add_tokens (&tokens, &cmd_stack);
-                  //state = FINAL;
-                  state = SEMI_COLON;
+                  state = FINAL;
                   break;
                 default:
                   add_char (&word, c);
@@ -462,5 +461,5 @@ read_command_stream (command_stream_t s)
     }
 
   //error (1, 0, "command reading not yet implemented");
-  return 0;
+  return cmd_stack.stack[0];
 }
