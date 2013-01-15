@@ -9,9 +9,9 @@
    static function definitions, etc.  */
 #include "alloc.h"
 #include "ctype.h"
-#include "stdlib.h"
-
-#include "stdio.h"
+//#include <stdlib.h>
+#include <stdio.h>
+//#include "string.h"
 
 /*
 TODO:
@@ -74,6 +74,18 @@ typedef struct operator_stack_ {
         checked_grow_alloc ((void *) arr, &capacity); \
       }
 
+// Error handling
+// Global var to keep track of all the newlines
+int g_newlines = 0;
+
+void
+error_and_message(char * message)
+{
+  error (1, 0, "%d: %s", g_newlines + 1, message);
+}
+
+
+// Helper functions
 // Need this?
 bool 
 is_simple_cmd_char (char i) 
@@ -119,6 +131,7 @@ make_command_stream (int (*get_byte) (void *),
   return s;
 }
 
+// String and token operations
 void
 add_char (string *str, char c)
 {
@@ -148,6 +161,7 @@ next_word (token_array *tokens, string *word)
   word->arr = (char *) checked_malloc (word->capacity * sizeof (char));
 }
 
+// Stack operations
 void
 add_tokens (token_array *tokens, command_stack *cmd_stack)
 {
@@ -224,6 +238,7 @@ finish_op_stack (operator_stack *op_stack, command_stack *cmd_stack)
     }
 }
 
+// State functions
 void
 start_state (char c, enum State *state, string *word)
 {
@@ -232,11 +247,14 @@ start_state (char c, enum State *state, string *word)
       case '|':
       case '&':
       case ';':
-        error (1, 0, "Invalid character at start");
+        //error (1, 0, "Invalid character at start");
+        error_and_message ("Invalid character at start");
+        break;
+      case '\n':
+        g_newlines++;
         break;
       case ' ':
       case '\t':
-      case '\n':
         // Loop back to start state
         break;
       case '#':
@@ -283,6 +301,7 @@ normal_state (char c, enum State *state, token_array *tokens, string *word,
         next_word (tokens, word);
         break;
       case '\n':
+        g_newlines++;
         next_word (tokens, word);
         add_tokens (tokens, cmd_stack);
         *state = FINAL;
@@ -300,9 +319,11 @@ semi_colon_state (char c, enum State *state, string *word,
   switch (c)
     {
       // TODO: Deal with error and special cases later
+      case '\n':
+        g_newlines++;
+        break;
       case ' ':
       case '\t':
-      case '\n':
         // Ignore whitespace in this state
         break;
       default:
@@ -319,6 +340,7 @@ comment_start_state (char c, enum State *state)
   switch (c)
     {
       case '\n':
+        g_newlines++;
         *state = START;
         break;
       default:
@@ -333,9 +355,11 @@ pipe_state (char c, enum State *state, string *word,
 {
   switch (c)
     {
+      case '\n':
+        g_newlines++;
+        break;
       case ' ':
       case '\t':
-      case '\n':
         add_op (PIPE_COMMAND, op_stack, cmd_stack);
         *state = PIPE_SPACE;
         break;
@@ -345,7 +369,7 @@ pipe_state (char c, enum State *state, string *word,
         break;
       case '&':
       case ';':
-        error (1, 0, "Incomplete pipe");
+        error_and_message ("Incomplete pipe");
         break;
       default:
         add_char (word, c);
@@ -360,14 +384,16 @@ pipe_space_state (char c, enum State *state, string *word)
 {
   switch (c)
     {
+      case '\n':
+        g_newlines++;
+        break;
       case ' ':
       case '\t':
-      case '\n':
         break;
       case '&':
       case '|':
       case ';':
-        error (1, 0, "Incomplete Pipe");
+        error_and_message ("Incomplete Pipe");
         break;
       default:
         add_char (word, c);
@@ -381,14 +407,16 @@ or_state (char c, enum State *state, string *word)
 {
   switch (c)
     {
+      case '\n':
+        g_newlines++;
+        break;
       case ' ':
       case '\t':
-      case '\n':
         break;
       case '&':
       case '|':
       case ';':
-        error (1, 0, "Incomplete Or");
+        error_and_message ("Incomplete Or");
         break;
       default:
         add_char (word, c);
@@ -408,7 +436,7 @@ ampersand_state (char c, enum State *state, command_stack *cmd_stack,
         *state = AND;                  
         break;
       default:
-        error (1, 0, "Incomplete And");
+        error_and_message ("Incomplete And");
         break;
     }
 }
@@ -418,14 +446,16 @@ and_state (char c, enum State *state, string *word)
 {
   switch (c)
     {
+      case '\n':
+        g_newlines++;
+        break;
       case ' ':
       case '\t':
-      case '\n':
         break;
       case '&':
       case '|':
       case ';':
-        error (1, 0, "Incomplete And");
+        error_and_message ("Incomplete And");
         break;
       default:
         add_char (word, c);
@@ -473,7 +503,7 @@ read_command_stream (command_stream_t s)
           if(state != NORMAL && state != START)
             {
               printf("%d\n", state);
-              error (1, 0, "Error on last line");
+              error_and_message ("Error on last line");
               return 0;
             }
           finish_op_stack (&op_stack, &cmd_stack);
