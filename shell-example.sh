@@ -5,3 +5,8 @@ nothing -c -d > bob || # this is another comment
  y -n &&      # moar coments!! :D
  ame |is ; echo bob
 a && b && c && d || e # comments
+
+(
+hi sir
+my -name is | (several commands)
+end ; of ; (line))

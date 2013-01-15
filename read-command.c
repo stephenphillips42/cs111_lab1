@@ -38,6 +38,8 @@ enum State
     COMMENT_AND,        // Comment after an and
     SEMI_COLON,         // State just after a semicolon (;)
     COMMENT_SEMI_COLON, // Comment just after a semi-colon
+    SUBSHELL,           // State while in parenthesis
+    AFTER_SUBSHELL,     // State right after a closed parenthesis
     FINAL               // Finish states
   };
 
@@ -82,7 +84,6 @@ typedef struct operator_stack_ {
 // Error handling
 // Global var to keep track of all the newlines
 int g_newlines = 0;
-
 void
 error_and_message(char * message)
 {
@@ -91,15 +92,6 @@ error_and_message(char * message)
 
 
 // Helper functions
-// Need this?
-bool 
-is_simple_cmd_char (char i) 
-{
-  return isalnum (i) || i == '!' || i == '+' || i == ',' || i == '-' 
-      || i == '.' || i == '/' || i == ':' || i == '@' || i == '^' || i == '_';
-  // Switch  table? Faster?
-}
-
 int
 op_precedence (enum command_type type)
 {
@@ -252,6 +244,7 @@ start_state (char c, enum State *state, string *word)
       case '|':
       case '&':
       case ';':
+      case ')':
         //error (1, 0, "Invalid character at start");
         error_and_message ("Invalid character at start");
         break;
@@ -261,6 +254,10 @@ start_state (char c, enum State *state, string *word)
       case ' ':
       case '\t':
         // Loop back to start state
+        break;
+      case '(':
+        printf("%s", "Start to Subshell");
+        *state = SUBSHELL;
         break;
       case '#':
         *state = COMMENT_START;
@@ -274,7 +271,7 @@ start_state (char c, enum State *state, string *word)
 
 void
 normal_state (char c, enum State *state, token_array *tokens, string *word, 
-                  command_stack *cmd_stack)
+                  command_stack *cmd_stack, size_t depth, bool *in_subshell)
 {
   switch (c)
     {
@@ -304,6 +301,18 @@ normal_state (char c, enum State *state, token_array *tokens, string *word,
       case ' ':
       case '\t':
         next_word (tokens, word);
+        break;
+      case '(':
+        printf("%s", "hello world");
+        *state = SUBSHELL;
+        break;
+      case ')':
+        if (depth == 0)
+          {
+            error_and_message("Unexpected close of parenthesis");
+          }
+        *in_subshell = false;
+        *state = FINAL;
         break;
       case '#':
         // If we are not in the middle of a word
@@ -350,10 +359,10 @@ semi_colon_state (char c, enum State *state, string *word,
 {
   switch (c)
     {
-      // TODO: Deal with error and special cases later
       case '&':
       case '|':
       case ';':
+      case ')':
         error_and_message ("Incomplete semicolon");
         break;
       case '\n':
@@ -365,6 +374,9 @@ semi_colon_state (char c, enum State *state, string *word,
       case ' ':
       case '\t':
         // Ignore whitespace in this state
+        break;
+      case '(':
+        *state = SUBSHELL;
         break;
       default:
         add_op (SEQUENCE_COMMAND, op_stack, cmd_stack);
@@ -388,12 +400,16 @@ pipe_state (char c, enum State *state, string *word,
         add_op (PIPE_COMMAND, op_stack, cmd_stack);
         *state = PIPE_SPACE;
         break;
+      case '(':
+        *state = SUBSHELL;
+        break;
       case '|':
         add_op (OR_COMMAND, op_stack, cmd_stack);
         *state = OR;
         break;
       case '&':
       case ';':
+      case ')':
         error_and_message ("Incomplete pipe");
         break;
       case '#':
@@ -418,9 +434,13 @@ pipe_space_state (char c, enum State *state, string *word)
       case ' ':
       case '\t':
         break;
+      case '(':
+        *state = SUBSHELL;
+        break;
       case '&':
       case '|':
       case ';':
+      case ')':
         error_and_message ("Incomplete Pipe");
         break;
       case '#':
@@ -444,9 +464,13 @@ or_state (char c, enum State *state, string *word)
       case ' ':
       case '\t':
         break;
+      case '(':
+        *state = SUBSHELL;
+        break;
       case '&':
       case '|':
       case ';':
+      case ')':
         error_and_message ("Incomplete Or");
         break;
       case '#':
@@ -486,9 +510,13 @@ and_state (char c, enum State *state, string *word)
       case ' ':
       case '\t':
         break;
+      case '(':
+        *state = SUBSHELL;
+        break;
       case '&':
       case '|':
       case ';':
+      case ')':
         error_and_message ("Incomplete And");
         break;
       case '#':
@@ -501,8 +529,86 @@ and_state (char c, enum State *state, string *word)
     }
 }
 
+command_t parse_stream(command_stream_t s, size_t depth, bool *in_subshell);
+
+void
+subshell_state (enum State *state, command_stack *cmd_stack, size_t depth, 
+                              command_stream_t s)
+{
+  size_t size = 0;
+  size_t capacity = 2;
+  command_t commands =  (command_t) checked_malloc (2 * sizeof (struct command));
+  
+  bool in_subshell = true;
+  while(in_subshell)
+  {
+    command_t cmd = parse_stream(s, depth + 1, &in_subshell);
+    CHECK_GROW(commands, size, capacity);
+    commands[size] = *cmd;
+    size++;
+  }
+
+
+  // Create subshell command
+  command_t subshell_cmd = (command_t) checked_malloc (sizeof (struct command));
+  subshell_cmd->type = SUBSHELL_COMMAND;
+  subshell_cmd->status = -1;
+  subshell_cmd->input = 0;
+  subshell_cmd->output = 0;
+  subshell_cmd->u.subshell_command = commands;
+
+  print_command(subshell_cmd);
+  // Add subshell command to command stack
+  CHECK_GROW (cmd_stack->stack, cmd_stack->top, cmd_stack->capacity);
+  cmd_stack->stack[cmd_stack->top] = subshell_cmd;
+  cmd_stack->top++;
+
+  *state = AFTER_SUBSHELL;
+}
+
+void
+after_subshell_state (char c, enum State *state, size_t depth, bool *in_subshell)
+{
+  switch (c)
+    {
+      case '\n':
+        g_newlines++;
+        break;
+      case '\t':
+      case ' ':
+        break; 
+      case '|':
+        *state = PIPE;
+        break;
+      case '&':
+        *state = AMPERSAND;
+        break;
+      case ';':
+        *state = SEMI_COLON;
+        break;
+      case ')':
+        if(depth == 0)
+          error_and_message("Unexpected close parenthesis");
+        else
+        {
+          *in_subshell = false;
+          *state = FINAL;
+        }
+      default:
+        error_and_message("Invalid token after closed parenthesis");
+        break;
+    }
+}
+
 command_t
 read_command_stream (command_stream_t s)
+{
+  bool subshell = true;
+  return parse_stream(s, 0, &subshell);
+}
+
+command_t
+parse_stream(command_stream_t s, size_t depth, bool *in_subshell)
 {
   /* FIXME: Replace this with your implementation too.  */
   // State of the Parser
@@ -534,7 +640,9 @@ read_command_stream (command_stream_t s)
 
   while (state != FINAL)
     {
-      int i = GET(s);
+      int i = 0;
+      if (state != SUBSHELL)
+        i = GET(s);
       if (i < 0)
         {
           if(state != NORMAL && state != START)
@@ -558,7 +666,7 @@ read_command_stream (command_stream_t s)
             comment_state (START, c, &state);
             break;
           case NORMAL:
-            normal_state (c, &state, &tokens, &word, &cmd_stack);
+            normal_state (c, &state, &tokens, &word, &cmd_stack, depth, in_subshell);
             break;
           case COMMENT_NORMAL:
             // Special case of comment since after the newline it goes 
@@ -595,6 +703,13 @@ read_command_stream (command_stream_t s)
             break;
           case COMMENT_AND:
             comment_state (AND, c, &state);
+            break;
+          case SUBSHELL:
+            printf("%s", "hello world");
+            subshell_state (&state, &cmd_stack, depth, s);
+            break;
+          case AFTER_SUBSHELL:
+            after_subshell_state(c, &state, depth, in_subshell);
             break;
           default:
             break;
