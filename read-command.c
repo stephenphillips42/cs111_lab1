@@ -24,15 +24,20 @@ TODO:
 enum State
   {
     START,              // Initial State
+    COMMENT_START,      // Comment just after the start
     NORMAL,             // Simple Command State
+    COMMENT_NORMAL,     // Comment after a normal word
     SPECIAL,            // State just after a backslash (\)
-    COMMENT_START,     // Normal comment
     PIPE,               // State just after a Pipe (|)
     PIPE_SPACE,         // State just after a Pipe and whitespace
+    COMMENT_PIPE,       // Comment after a pipe
     OR,                 // State just after an Or (||)
+    COMMENT_OR,         // Comment after an or
     AMPERSAND,          // State just after an Ampersand (&)
     AND,                // State just after an And (&&)
+    COMMENT_AND,        // Comment after an and
     SEMI_COLON,         // State just after a semicolon (;)
+    COMMENT_SEMI_COLON, // Comment just after a semi-colon
     FINAL               // Finish states
   };
 
@@ -300,6 +305,18 @@ normal_state (char c, enum State *state, token_array *tokens, string *word,
       case '\t':
         next_word (tokens, word);
         break;
+      case '#':
+        // If we are not in the middle of a word
+        if (word->size == 0)
+          {
+            add_tokens (tokens, cmd_stack);
+            *state = COMMENT_NORMAL;
+          }
+        else
+          {
+            add_char(word, c);
+          }
+        break;
       case '\n':
         g_newlines++;
         next_word (tokens, word);
@@ -313,14 +330,37 @@ normal_state (char c, enum State *state, token_array *tokens, string *word,
 }
 
 void
+comment_state (enum State previous_state, char c, enum State *state)
+{
+  switch (c)
+    {
+      case '\n':
+        g_newlines++;
+        *state = previous_state;
+        break;
+      default:
+        // Do nothing until hitting newline
+        break;
+    }
+}
+
+void
 semi_colon_state (char c, enum State *state, string *word,
                         command_stack *cmd_stack, operator_stack *op_stack)
 {
   switch (c)
     {
       // TODO: Deal with error and special cases later
+      case '&':
+      case '|':
+      case ';':
+        error_and_message ("Incomplete semicolon");
+        break;
       case '\n':
         g_newlines++;
+        break;
+      case '#':
+        *state = COMMENT_SEMI_COLON;
         break;
       case ' ':
       case '\t':
@@ -330,21 +370,6 @@ semi_colon_state (char c, enum State *state, string *word,
         add_op (SEQUENCE_COMMAND, op_stack, cmd_stack);
         add_char (word, c);
         *state = NORMAL;
-        break;
-    }
-}
-
-void
-comment_start_state (char c, enum State *state)
-{
-  switch (c)
-    {
-      case '\n':
-        g_newlines++;
-        *state = START;
-        break;
-      default:
-        // Do nothing until hitting newline
         break;
     }
 }
@@ -371,6 +396,9 @@ pipe_state (char c, enum State *state, string *word,
       case ';':
         error_and_message ("Incomplete pipe");
         break;
+      case '#':
+        *state = COMMENT_PIPE;
+        break;
       default:
         add_char (word, c);
         add_op (PIPE_COMMAND, op_stack, cmd_stack);
@@ -395,6 +423,9 @@ pipe_space_state (char c, enum State *state, string *word)
       case ';':
         error_and_message ("Incomplete Pipe");
         break;
+      case '#':
+        *state = COMMENT_PIPE;
+        break;
       default:
         add_char (word, c);
         *state = NORMAL;
@@ -417,6 +448,9 @@ or_state (char c, enum State *state, string *word)
       case '|':
       case ';':
         error_and_message ("Incomplete Or");
+        break;
+      case '#':
+        *state = COMMENT_OR;
         break;
       default:
         add_char (word, c);
@@ -456,6 +490,9 @@ and_state (char c, enum State *state, string *word)
       case '|':
       case ';':
         error_and_message ("Incomplete And");
+        break;
+      case '#':
+        *state = COMMENT_AND;
         break;
       default:
         add_char (word, c);
@@ -502,11 +539,9 @@ read_command_stream (command_stream_t s)
         {
           if(state != NORMAL && state != START)
             {
-              printf("%d\n", state);
               error_and_message ("Error on last line");
               return 0;
             }
-          finish_op_stack (&op_stack, &cmd_stack);
           state = FINAL;
           continue;
         }
@@ -519,8 +554,16 @@ read_command_stream (command_stream_t s)
           case START:
             start_state (c, &state, &word);
             break;
+          case COMMENT_START:
+            comment_state (START, c, &state);
+            break;
           case NORMAL:
             normal_state (c, &state, &tokens, &word, &cmd_stack);
+            break;
+          case COMMENT_NORMAL:
+            // Special case of comment since after the newline it goes 
+            //   back to final state
+            comment_state (FINAL, c, &state);
             break;
           case SPECIAL:
             if (c != '\n')
@@ -529,17 +572,20 @@ read_command_stream (command_stream_t s)
           case SEMI_COLON:
             semi_colon_state (c, &state, &word, &cmd_stack, &op_stack);
             break;
-          case COMMENT_START:
-            comment_start_state (c, &state);
-            break;
           case PIPE:
             pipe_state (c, &state, &word, &cmd_stack, &op_stack);
             break;
           case PIPE_SPACE:
             pipe_space_state (c, &state, &word);
             break;
+          case COMMENT_PIPE:
+            comment_state (PIPE_SPACE, c, &state);
+            break;
           case OR:
             or_state (c, &state, &word);
+            break;
+          case COMMENT_OR:
+            comment_state (OR, c, &state);
             break;
           case AMPERSAND:
             ampersand_state (c, &state, &cmd_stack, &op_stack);
@@ -547,11 +593,15 @@ read_command_stream (command_stream_t s)
           case AND:
             and_state (c, &state, &word);
             break;
+          case COMMENT_AND:
+            comment_state (AND, c, &state);
+            break;
           default:
             break;
         }
     }
 
+  finish_op_stack (&op_stack, &cmd_stack);
   //error (1, 0, "command reading not yet implemented");
   return cmd_stack.stack[0];
 }

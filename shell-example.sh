@@ -1,7 +1,7 @@
 #! /bin/bash/
-i -am 
-nothing -c -d > bob ||
- hi -m |
- y -n &&
+i -am # this is a comment
+nothing -c -d > bob || # this is another comment
+ hi -m | #lots of comments
+ y -n &&      # moar coments!! :D
  ame |is ; echo bob
-a && b && c && d || c
+a && b && c && d || e # comments
