@@ -80,7 +80,7 @@ typedef struct operator_stack_ {
 
 #define GET(cmd_strm) cmd_strm->get(cmd_strm->arg)
 #define CHECK_GROW(arr, size, capacity) \
-    if (capacity < size) \
+    if (capacity <= size) \
       { \
         checked_grow_alloc ((void *) arr, &capacity); \
       }
@@ -986,6 +986,7 @@ after_subshell_state (char c, enum State *state, size_t depth, bool *in_subshell
           *in_subshell = false;
           *state = FINAL;
         }
+        break;
       default:
         error_and_message("Invalid token after closed parenthesis");
         break;
