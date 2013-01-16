@@ -1,4 +1,11 @@
-This is a skeleton for CS 111 Lab 1.
+README
+Authors: 
+Andy Huang       - UCLA ID: 503885009
+Stephen Phillips - UCLA ID: 503888079
 
-Replace this README file with notes on your implementation.
-Mentions any special features or limitations.
+We don't have anything for special characters (e.g. \t, \n, etc.). We also 
+consider apostrophes, quotations, grave accents as errors too. We do implement 
+everything needed for test-p-ok.sh and gives appropriate errors and error 
+messages including line numbers. There is some dummy code to allow the 
+makefile compilation to work (gets rid of "argument not used" errors). The 
+code does not change anything in the read-command.c file.
