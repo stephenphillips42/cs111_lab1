@@ -23,28 +23,28 @@ TODO:
 
 enum State
   {
-    START,              // Initial State
-    COMMENT_START,      // Comment just after the start
-    NORMAL,             // Simple Command State
-    COMMENT_NORMAL,     // Comment after a normal word
-    INPUT,              // State after an input I/O redirection
-    AFTER_INPUT,        // State just after an input has been specified
-    OUTPUT,             // State after an output I/O redirection
-    AFTER_OUTPUT,       // State just after an output has been specified
-    SPECIAL,            // State just after a backslash (\)
-    PIPE,               // State just after a Pipe (|)
-    PIPE_SPACE,         // State just after a Pipe and whitespace
-    COMMENT_PIPE,       // Comment after a pipe
-    OR,                 // State just after an Or (||)
-    COMMENT_OR,         // Comment after an or
-    AMPERSAND,          // State just after an Ampersand (&)
-    AND,                // State just after an And (&&)
-    COMMENT_AND,        // Comment after an and
-    SEMI_COLON,         // State just after a semicolon (;)
-    COMMENT_SEMI_COLON, // Comment just after a semi-colon
-    SUBSHELL,           // State while in parenthesis
-    AFTER_SUBSHELL,     // State right after a closed parenthesis
-    FINAL               // Finish states
+    START,              // 0  - Initial State
+    COMMENT_START,      // 1  - Comment just after the start
+    NORMAL,             // 2  - Simple Command State
+    COMMENT_NORMAL,     // 3  - Comment after a normal word
+    INPUT,              // 4  - State after an input I/O redirection
+    AFTER_INPUT,        // 5  - State just after an input has been specified
+    OUTPUT,             // 6  - State after an output I/O redirection
+    AFTER_OUTPUT,       // 7  - State just after an output has been specified
+    SPECIAL,            // 8  - State just after a backslash (\)
+    PIPE,               // 9  - State just after a Pipe (|)
+    PIPE_SPACE,         // 10 - State just after a Pipe and whitespace
+    COMMENT_PIPE,       // 11 - Comment after a pipe
+    OR,                 // 12 - State just after an Or (||)
+    COMMENT_OR,         // 13 - Comment after an or
+    AMPERSAND,          // 14 - State just after an Ampersand (&)
+    AND,                // 15 - State just after an And (&&)
+    COMMENT_AND,        // 16 - Comment after an and
+    SEMI_COLON,         // 17 - State just after a semicolon (;)
+    COMMENT_SEMI_COLON, // 18 - Comment just after a semi-colon
+    SUBSHELL,           // 19 - State while in parenthesis
+    AFTER_SUBSHELL,     // 20 - State right after a closed parenthesis
+    FINAL               // 21 - Finish states
   };
 
 /* FIXME: Define the type 'struct command_stream' here.  This should
@@ -132,11 +132,24 @@ make_command_stream (int (*get_byte) (void *),
   return s;
 }
 
+bool
+is_simple_char (char c)
+{
+  return (isalpha(c) || c == '!' || c == '%' || c == '+' || c == ',' || 
+            c == '-' || c == '.' || c == '/' || c == ':' || c == '@' || 
+            c == '^' || c == '_' );
+}
+
 // String and token operations
 void
 add_char (string *str, char c)
 {
   CHECK_GROW(str->arr, str->size, str->capacity);
+
+  if (!is_simple_char (c))
+    {
+      error_and_message ("Invalid character");
+    }
 
   str->arr[str->size] = c;
   str->size++;
@@ -289,9 +302,15 @@ normal_state (char c, enum State *state, token_array *tokens, string *word,
   switch (c)
     {
       // TODO: We will add these later
-      case '<': 
+      case '<':
+        next_word (tokens, word);
+        add_tokens (tokens, cmd_stack, input, output);
+        *state = INPUT;
         break;
       case '>':
+        next_word (tokens, word);
+        add_tokens (tokens, cmd_stack, input, output);
+        *state = OUTPUT;
         break;
       case '|':
         next_word (tokens, word);
@@ -373,7 +392,7 @@ input_state (char c, enum State *state, string *input, string *output,
 {
   switch (c)
     {
-      // TODO: We will add these later
+      // TODO: Need to add more complex error handling in case word already completed!!
       case '|':
       case '(':
       case '&':
@@ -437,17 +456,74 @@ input_state (char c, enum State *state, string *input, string *output,
           }
         break;
       default:
+        if (input->arr == 0)
+          {
+            input->capacity = 8;
+            input->arr = (char *) checked_malloc (8 * sizeof (char *));
+          }
         add_char (input, c);
         break;
     }
 }
 
-/*void
-after_input_state(char c, enum State *state, string *word
-  command_stack *cmd_stack, size_t depth, bool *in_subshell)
+void
+after_input_state(char c, enum State *state, string *output,
+                      size_t depth, bool *in_subshell)
 {
-
-}*/
+  switch (c)
+    {
+      case '&':
+        *state = AMPERSAND;
+        break;
+      case '|':
+        *state = PIPE;
+        break;
+      case ';':
+        *state = SEMI_COLON;
+        break;
+      case '<':
+        error_and_message ("Cannot redirect multiple input");
+        break;
+      case '>':
+        if (output->size != 0)
+          {
+            error_and_message ("Cannot redirect multiple output");
+          }
+        else
+          {
+            *state = OUTPUT;
+          }
+        break;
+      case ')':
+        if(depth == 0)
+          {
+            error_and_message ("Unexpected end of parenthesis");
+          }
+        else
+          {
+            *in_subshell = false;
+            *state = FINAL;
+          }
+        break;
+      case '\n':
+        g_newlines++;
+        *state = FINAL;
+        break;
+      case '#':
+        *state = COMMENT_NORMAL;
+        break;
+      case ' ':
+      case '\t':
+        // Ignore whitespace in this state
+        break;
+      case '(':
+        error_and_message ("Unexpected parenthesis");
+        break;
+      default:
+        error_and_message ("Cannot have multiple input files");
+        break;
+    }
+}
 
 void
 output_state (char c, enum State *state, string *output, string *input,
@@ -519,7 +595,71 @@ output_state (char c, enum State *state, string *output, string *input,
           }
         break;
       default:
+        if (output->arr == 0)
+          {
+            output->capacity = 8;
+            output->arr = (char *) checked_malloc (8 * sizeof (char *));
+          }
         add_char (output, c);
+        break;
+    }
+}
+
+void
+after_output_state(char c, enum State *state, string *input,
+                      size_t depth, bool *in_subshell)
+{
+  switch (c)
+    {
+      case '&':
+        *state = AMPERSAND;
+        break;
+      case '|':
+        *state = PIPE;
+        break;
+      case ';':
+        *state = SEMI_COLON;
+        break;
+      case '>':
+        error_and_message ("Cannot redirect multiple output");
+        break;
+      case '<':
+        if (input->size != 0)
+          {
+            error_and_message ("Cannot redirect multiple input");
+          }
+        else
+          {
+            *state = INPUT;
+          }
+        break;
+      case ')':
+        if(depth == 0)
+          {
+            error_and_message ("Unexpected end of parenthesis");
+          }
+        else
+          {
+            *in_subshell = false;
+            *state = FINAL;
+          }
+        break;
+      case '\n':
+        g_newlines++;
+        *state = FINAL;
+        break;
+      case '#':
+        *state = COMMENT_NORMAL;
+        break;
+      case ' ':
+      case '\t':
+        // Ignore whitespace in this state
+        break;
+      case '(':
+        error_and_message ("Unexpected parenthesis");
+        break;
+      default:
+        error_and_message ("Cannot have multiple output files");
         break;
     }
 }
@@ -882,12 +1022,16 @@ parse_stream(command_stream_t s, size_t depth, bool *in_subshell)
             comment_state (FINAL, c, &state);
             break;
           case INPUT:
+            input_state (c, &state, &input, &output, depth, in_subshell);
             break;
           case AFTER_INPUT:
+            after_input_state(c, &state, &output, depth, in_subshell);
             break;
           case OUTPUT:
+            output_state (c, &state, &output, &input, depth, in_subshell);
             break;
           case AFTER_OUTPUT:
+            after_output_state(c, &state, &input, depth, in_subshell);
             break;
           case SPECIAL:
             if (c != '\n')
