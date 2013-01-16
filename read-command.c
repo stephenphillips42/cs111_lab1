@@ -135,7 +135,7 @@ make_command_stream (int (*get_byte) (void *),
 bool
 is_simple_char (char c)
 {
-  return (isalpha(c) || c == '!' || c == '%' || c == '+' || c == ',' || 
+  return (isalnum(c) || c == '!' || c == '%' || c == '+' || c == ',' || 
             c == '-' || c == '.' || c == '/' || c == ':' || c == '@' || 
             c == '^' || c == '_' );
 }
@@ -199,11 +199,19 @@ add_tokens (token_array *tokens, command_stack *cmd_stack,
   // This is the part that we will implement later with input and output
   cmd->input = input->arr;
   cmd->output = output->arr;
-  
-  // Reset Tokens
+
+  // Reset Tokens and input and output
   tokens->size = 0;
   tokens->capacity = 8;
   tokens->arr = (char **) checked_malloc (tokens->capacity * sizeof (char *));
+
+  input->size = 0;
+  input->capacity = 0;
+  input->arr = 0;
+
+  output->size = 0;
+  output->capacity = 0;
+  output->arr = 0;
 
   cmd_stack->stack[cmd_stack->top] = cmd;
   cmd_stack->top++;
@@ -304,12 +312,10 @@ normal_state (char c, enum State *state, token_array *tokens, string *word,
       // TODO: We will add these later
       case '<':
         next_word (tokens, word);
-        add_tokens (tokens, cmd_stack, input, output);
         *state = INPUT;
         break;
       case '>':
         next_word (tokens, word);
-        add_tokens (tokens, cmd_stack, input, output);
         *state = OUTPUT;
         break;
       case '|':
@@ -387,40 +393,60 @@ comment_state (enum State previous_state, char c, enum State *state)
 }
 
 void
-input_state (char c, enum State *state, string *input, string *output,
-                  size_t depth, bool *in_subshell)
+input_state (char c, enum State *state, token_array *tokens, string *input, 
+                    string *output, command_stack *cmd_stack, size_t depth, 
+                    bool *in_subshell)
 {
   switch (c)
     {
       // TODO: Need to add more complex error handling in case word already completed!!
-      case '|':
-      case '(':
-      case '&':
-      case ';':
-        error_and_message ("I/O redirection incomplete");
-        break;
-      case ')':
-        if (depth == 0)
-          {
-            error_and_message ("Unexpected end of parenthesis");
-          }
-        end_word(input);
-        *in_subshell = false;
-        *state = FINAL;
-        break;
       //case '\\':
       //  state = SPECIAL;
       //  break;
-      case '<': 
-        error_and_message ("Unspecified input");
+      case '&':
+        end_word(input);
+        add_tokens (tokens, cmd_stack, input, output);
+        *state = AMPERSAND;
+        break;
+      case '|':
+        end_word(input);
+        add_tokens (tokens, cmd_stack, input, output);
+        *state = PIPE;
+        break;
+      case ';':
+        end_word(input);
+        add_tokens (tokens, cmd_stack, input, output);
+        *state = SEMI_COLON;
+        break;
+      case '<':
+        error_and_message ("Cannot redirect multiple input");
         break;
       case '>':
-        if(output->size != 0)
+        if (output->size != 0)
           {
-            error_and_message ("Cannot specify two outputs");
+            error_and_message ("Cannot redirect multiple output");
           }
-        end_word(input);
-        *state = OUTPUT;
+        else
+          {
+            end_word(input);
+            *state = OUTPUT;
+          }
+        break;
+      case '(':
+        error_and_message ("I/O redirection incomplete");
+        break;
+      case ')':
+        if(depth == 0)
+          {
+            error_and_message ("Unexpected end of parenthesis");
+          }
+        else
+          {
+            end_word(input);
+            add_tokens (tokens, cmd_stack, input, output);
+            *in_subshell = false;
+            *state = FINAL;
+          }
         break;
       case ' ':
       case '\t':
@@ -452,6 +478,7 @@ input_state (char c, enum State *state, string *input, string *output,
         else
           {
             end_word(input);
+            add_tokens (tokens, cmd_stack, input, output);
             *state = FINAL;
           }
         break;
@@ -467,18 +494,23 @@ input_state (char c, enum State *state, string *input, string *output,
 }
 
 void
-after_input_state(char c, enum State *state, string *output,
-                      size_t depth, bool *in_subshell)
+after_input_state(char c, enum State *state, token_array *tokens,
+                        string *input, string *output,
+                        command_stack *cmd_stack, size_t depth,
+                        bool *in_subshell)
 {
   switch (c)
     {
       case '&':
+        add_tokens (tokens, cmd_stack, input, output);
         *state = AMPERSAND;
         break;
       case '|':
+        add_tokens (tokens, cmd_stack, input, output);
         *state = PIPE;
         break;
       case ';':
+        add_tokens (tokens, cmd_stack, input, output);
         *state = SEMI_COLON;
         break;
       case '<':
@@ -501,15 +533,18 @@ after_input_state(char c, enum State *state, string *output,
           }
         else
           {
+            add_tokens (tokens, cmd_stack, input, output);
             *in_subshell = false;
             *state = FINAL;
           }
         break;
       case '\n':
         g_newlines++;
+        add_tokens (tokens, cmd_stack, input, output);
         *state = FINAL;
         break;
       case '#':
+        add_tokens (tokens, cmd_stack, input, output);
         *state = COMMENT_NORMAL;
         break;
       case ' ':
@@ -526,40 +561,58 @@ after_input_state(char c, enum State *state, string *output,
 }
 
 void
-output_state (char c, enum State *state, string *output, string *input,
-                  size_t depth, bool *in_subshell)
+output_state (char c, enum State *state, token_array *tokens, string *output,
+                    string *input, command_stack *cmd_stack, size_t depth, 
+                    bool *in_subshell)
 {
   switch (c)
     {
-      // TODO: We will add these later
-      case '|':
-      case '(':
       case '&':
+        end_word(output);
+        add_tokens (tokens, cmd_stack, input, output);
+        *state = AMPERSAND;
+        break;
+      case '|':
+        end_word(output);
+        add_tokens (tokens, cmd_stack, input, output);
+        *state = PIPE;
+        break;
       case ';':
-        error_and_message ("I/O redirection incomplete");
+        end_word(output);
+        add_tokens (tokens, cmd_stack, input, output);
+        *state = SEMI_COLON;
         break;
       case ')':
         if (depth == 0)
           {
             error_and_message ("Unexpected end of parenthesis");
           }
-        end_word(output);
-        *in_subshell = false;
-        *state = FINAL;
+        else
+          {
+            end_word(output);
+            add_tokens (tokens, cmd_stack, input, output);
+            *in_subshell = false;
+            *state = FINAL;
+          }
+        break;
+      case '(':
+        error_and_message ("I/O redirection incomplete");
         break;
       //case '\\':
       //  state = SPECIAL;
       //  break;
-      case '>': 
-        error_and_message ("Unspecified input");
+      case '>':
+        error_and_message ("Cannot redirect multiple output");
         break;
       case '<':
-        if(input->size != 0)
+        if (input->size != 0)
           {
-            error_and_message ("Cannot specify two inputs");
+            error_and_message ("Cannot redirect multiple input");
           }
-        end_word(output);
-        *state = INPUT;
+        else
+          {
+            *state = INPUT;
+          }
         break;
       case ' ':
       case '\t':
@@ -606,18 +659,23 @@ output_state (char c, enum State *state, string *output, string *input,
 }
 
 void
-after_output_state(char c, enum State *state, string *input,
-                      size_t depth, bool *in_subshell)
+after_output_state(char c, enum State *state, token_array *tokens,
+                          string *output, string *input,
+                          command_stack *cmd_stack, size_t depth,
+                          bool *in_subshell)
 {
   switch (c)
     {
       case '&':
+        add_tokens (tokens, cmd_stack, input, output);
         *state = AMPERSAND;
         break;
       case '|':
+        add_tokens (tokens, cmd_stack, input, output);
         *state = PIPE;
         break;
       case ';':
+        add_tokens (tokens, cmd_stack, input, output);
         *state = SEMI_COLON;
         break;
       case '>':
@@ -640,15 +698,18 @@ after_output_state(char c, enum State *state, string *input,
           }
         else
           {
+            add_tokens (tokens, cmd_stack, input, output);
             *in_subshell = false;
             *state = FINAL;
           }
         break;
       case '\n':
         g_newlines++;
+        add_tokens (tokens, cmd_stack, input, output);
         *state = FINAL;
         break;
       case '#':
+        add_tokens (tokens, cmd_stack, input, output);
         *state = COMMENT_NORMAL;
         break;
       case ' ':
@@ -1022,16 +1083,20 @@ parse_stream(command_stream_t s, size_t depth, bool *in_subshell)
             comment_state (FINAL, c, &state);
             break;
           case INPUT:
-            input_state (c, &state, &input, &output, depth, in_subshell);
+            input_state (c, &state, &tokens, &input, &output, &cmd_stack,
+                          depth, in_subshell);
             break;
           case AFTER_INPUT:
-            after_input_state(c, &state, &output, depth, in_subshell);
+            after_input_state(c, &state, &tokens, &input, &output, &cmd_stack,
+                                depth, in_subshell);
             break;
           case OUTPUT:
-            output_state (c, &state, &output, &input, depth, in_subshell);
+            output_state (c, &state, &tokens, &output, &input, &cmd_stack,
+                            depth, in_subshell);
             break;
           case AFTER_OUTPUT:
-            after_output_state(c, &state, &input, depth, in_subshell);
+            after_output_state(c, &state, &tokens, &output, &input, &cmd_stack,
+                                depth, in_subshell);
             break;
           case SPECIAL:
             if (c != '\n')
