@@ -965,6 +965,7 @@ after_subshell_state (char c, enum State *state, size_t depth, bool *in_subshell
     {
       case '\n':
         g_newlines++;
+        *state = FINAL;
         break;
       case '\t':
       case ' ':
