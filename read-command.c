@@ -27,6 +27,10 @@ enum State
     COMMENT_START,      // Comment just after the start
     NORMAL,             // Simple Command State
     COMMENT_NORMAL,     // Comment after a normal word
+    INPUT,              // State after an input I/O redirection
+    AFTER_INPUT,        // State just after an input has been specified
+    OUTPUT,             // State after an output I/O redirection
+    AFTER_OUTPUT,       // State just after an output has been specified
     SPECIAL,            // State just after a backslash (\)
     PIPE,               // State just after a Pipe (|)
     PIPE_SPACE,         // State just after a Pipe and whitespace
@@ -145,7 +149,6 @@ next_word (token_array *tokens, string *word)
     return;
 
   CHECK_GROW(word->arr, word->size, word->capacity)
-
   word->arr[word->size] = 0;
 
   CHECK_GROW(tokens->arr, tokens->size, tokens->capacity)
@@ -158,9 +161,17 @@ next_word (token_array *tokens, string *word)
   word->arr = (char *) checked_malloc (word->capacity * sizeof (char));
 }
 
+void
+end_word(string *word)
+{
+  CHECK_GROW(word->arr, word->size, word->capacity);
+  word->arr[word->size] = 0;
+}
+
 // Stack operations
 void
-add_tokens (token_array *tokens, command_stack *cmd_stack)
+add_tokens (token_array *tokens, command_stack *cmd_stack, 
+                              string *input, string *output)
 {
   CHECK_GROW(tokens->arr, tokens->size, tokens->capacity);
 
@@ -173,8 +184,8 @@ add_tokens (token_array *tokens, command_stack *cmd_stack)
   cmd->status = -1;
   cmd->u.word = tokens->arr;
   // This is the part that we will implement later with input and output
-  cmd->input = 0;
-  cmd->output = 0;
+  cmd->input = input->arr;
+  cmd->output = output->arr;
   
   // Reset Tokens
   tokens->size = 0;
@@ -271,29 +282,30 @@ start_state (char c, enum State *state, string *word)
 }
 
 void
-normal_state (char c, enum State *state, token_array *tokens, string *word, 
-                  command_stack *cmd_stack, size_t depth, bool *in_subshell)
+normal_state (char c, enum State *state, token_array *tokens, string *word,
+                    string *input, string *output, command_stack *cmd_stack,
+                    size_t depth, bool *in_subshell)
 {
   switch (c)
     {
       // TODO: We will add these later
-      //case '<': 
-      //  break;
-      //case '>':
-      //  break;
+      case '<': 
+        break;
+      case '>':
+        break;
       case '|':
         next_word (tokens, word);
-        add_tokens (tokens, cmd_stack);
+        add_tokens (tokens, cmd_stack, input, output);
         *state = PIPE;
         break;
       case '&':
         next_word (tokens, word);
-        add_tokens (tokens, cmd_stack);
+        add_tokens (tokens, cmd_stack, input, output);
         *state = AMPERSAND;
         break;
       case ';':
         next_word (tokens, word);
-        add_tokens (tokens, cmd_stack);
+        add_tokens (tokens, cmd_stack, input, output);
         *state = SEMI_COLON;
         break;
       //case '\\':
@@ -313,14 +325,14 @@ normal_state (char c, enum State *state, token_array *tokens, string *word,
           }
         *in_subshell = false;
         next_word (tokens, word);
-        add_tokens (tokens, cmd_stack);
+        add_tokens (tokens, cmd_stack, input, output);
         *state = FINAL;
         break;
       case '#':
         // If we are not in the middle of a word
         if (word->size == 0)
           {
-            add_tokens (tokens, cmd_stack);
+            add_tokens (tokens, cmd_stack, input, output);
             *state = COMMENT_NORMAL;
           }
         else
@@ -331,7 +343,7 @@ normal_state (char c, enum State *state, token_array *tokens, string *word,
       case '\n':
         g_newlines++;
         next_word (tokens, word);
-        add_tokens (tokens, cmd_stack);
+        add_tokens (tokens, cmd_stack, input, output);
         *state = FINAL;
         break;
       default:
@@ -351,6 +363,163 @@ comment_state (enum State previous_state, char c, enum State *state)
         break;
       default:
         // Do nothing until hitting newline
+        break;
+    }
+}
+
+void
+input_state (char c, enum State *state, string *input, string *output,
+                  size_t depth, bool *in_subshell)
+{
+  switch (c)
+    {
+      // TODO: We will add these later
+      case '|':
+      case '(':
+      case '&':
+      case ';':
+        error_and_message ("I/O redirection incomplete");
+        break;
+      case ')':
+        if (depth == 0)
+          {
+            error_and_message ("Unexpected end of parenthesis");
+          }
+        end_word(input);
+        *in_subshell = false;
+        *state = FINAL;
+        break;
+      //case '\\':
+      //  state = SPECIAL;
+      //  break;
+      case '<': 
+        error_and_message ("Unspecified input");
+        break;
+      case '>':
+        if(output->size != 0)
+          {
+            error_and_message ("Cannot specify two outputs");
+          }
+        end_word(input);
+        *state = OUTPUT;
+        break;
+      case ' ':
+      case '\t':
+        // If we are not in the middle of a word
+        if (input->size != 0)
+          {
+            end_word(input);
+            *state = AFTER_INPUT;
+          }
+        break;
+      case '#':
+        // If we are not in the middle of a word
+        if (input->size == 0)
+          {
+            error_and_message ("Unspecified input");
+          }
+        else
+          {
+            add_char(input, c);
+          }
+        break;
+      case '\n':
+        g_newlines++;
+        // If we are not in the middle of a word
+        if (input->size == 0)
+          {
+            error_and_message ("I/O redirection incomplete");
+          }
+        else
+          {
+            end_word(input);
+            *state = FINAL;
+          }
+        break;
+      default:
+        add_char (input, c);
+        break;
+    }
+}
+
+/*void
+after_input_state(char c, enum State *state, string *word
+  command_stack *cmd_stack, size_t depth, bool *in_subshell)
+{
+
+}*/
+
+void
+output_state (char c, enum State *state, string *output, string *input,
+                  size_t depth, bool *in_subshell)
+{
+  switch (c)
+    {
+      // TODO: We will add these later
+      case '|':
+      case '(':
+      case '&':
+      case ';':
+        error_and_message ("I/O redirection incomplete");
+        break;
+      case ')':
+        if (depth == 0)
+          {
+            error_and_message ("Unexpected end of parenthesis");
+          }
+        end_word(output);
+        *in_subshell = false;
+        *state = FINAL;
+        break;
+      //case '\\':
+      //  state = SPECIAL;
+      //  break;
+      case '>': 
+        error_and_message ("Unspecified input");
+        break;
+      case '<':
+        if(input->size != 0)
+          {
+            error_and_message ("Cannot specify two inputs");
+          }
+        end_word(output);
+        *state = INPUT;
+        break;
+      case ' ':
+      case '\t':
+        // If we are in the middle of a word
+        if (output->size != 0)
+          {
+            end_word(output);
+            *state = AFTER_OUTPUT;
+          }
+        break;
+      case '#':
+        // If we are not in the middle of a word
+        if (output->size == 0)
+          {
+            error_and_message ("Unspecified output");
+          }
+        else
+          {
+            add_char (output, c);
+          }
+        break;
+      case '\n':
+        g_newlines++;
+        // If we are not in the middle of a word
+        if (output->size == 0)
+          {
+            error_and_message ("I/O redirection incomplete");
+          }
+        else
+          {
+            end_word(output);
+            *state = FINAL;
+          }
+        break;
+      default:
+        add_char (output, c);
         break;
     }
 }
@@ -546,7 +715,6 @@ subshell_state (enum State *state, command_stack *cmd_stack, size_t depth,
   {
     command_t cmd = parse_stream(s, depth + 1, &in_subshell);
     CHECK_GROW(commands, size, capacity);
-    print_command(cmd);
     commands[size] = cmd;
     size++;
   }
@@ -557,6 +725,7 @@ subshell_state (enum State *state, command_stack *cmd_stack, size_t depth,
     size_t i;
     for (i = 1; i < size; i++)
       {
+        // Create sequence command
         command_t seq_cmd = (command_t) 
               checked_malloc (sizeof (struct command));
         seq_cmd->type = SEQUENCE_COMMAND;
@@ -565,6 +734,7 @@ subshell_state (enum State *state, command_stack *cmd_stack, size_t depth,
         seq_cmd->u.command[0] = commands[i - 1];
         seq_cmd->u.command[1] = commands[i];
 
+        // Make the last command the sequence we just made
         commands[i] = seq_cmd;
       }
   }
@@ -576,6 +746,7 @@ subshell_state (enum State *state, command_stack *cmd_stack, size_t depth,
   subshell_cmd->status = -1;
   subshell_cmd->input = 0;
   subshell_cmd->output = 0;
+  // The subshell command is the last of our sequence commands we created
   subshell_cmd->u.subshell_command = commands[size - 1];
 
   // Add subshell command to command stack
@@ -645,6 +816,16 @@ parse_stream(command_stream_t s, size_t depth, bool *in_subshell)
   word.capacity = 16;
   word.arr = (char *) checked_malloc (word.capacity * sizeof (char));
 
+  string input;
+  input.size = 0;
+  input.capacity = 0;
+  input.arr = 0; // Input might not be needed
+
+  string output;
+  output.size = 0;
+  output.capacity = 0;
+  output.arr = 0; // Output might not be needed
+
   // Stacks
   command_stack cmd_stack;
   cmd_stack.top = 0; 
@@ -692,12 +873,21 @@ parse_stream(command_stream_t s, size_t depth, bool *in_subshell)
             comment_state (START, c, &state);
             break;
           case NORMAL:
-            normal_state (c, &state, &tokens, &word, &cmd_stack, depth, in_subshell);
+            normal_state (c, &state, &tokens, &word, &input, &output,
+                            &cmd_stack, depth, in_subshell);
             break;
           case COMMENT_NORMAL:
             // Special case of comment since after the newline it goes 
             //   back to final state
             comment_state (FINAL, c, &state);
+            break;
+          case INPUT:
+            break;
+          case AFTER_INPUT:
+            break;
+          case OUTPUT:
+            break;
+          case AFTER_OUTPUT:
             break;
           case SPECIAL:
             if (c != '\n')
@@ -739,6 +929,12 @@ parse_stream(command_stream_t s, size_t depth, bool *in_subshell)
           default:
             break;
         }
+    }
+
+  // Check for remaining words for command
+  if (tokens.size != 0)
+    {
+      add_tokens (&tokens, &cmd_stack, &input, &output);
     }
 
   finish_op_stack (&op_stack, &cmd_stack);
