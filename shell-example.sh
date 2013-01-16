@@ -8,5 +8,4 @@ a && b && c && d || e # comments
 
 (
 hi sir
-my -name is | (several commands)
-end ; of ; (line))
+hello world)

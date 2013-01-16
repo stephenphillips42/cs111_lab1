@@ -245,6 +245,8 @@ start_state (char c, enum State *state, string *word)
       case '&':
       case ';':
       case ')':
+      case '>':
+      case '<':
         //error (1, 0, "Invalid character at start");
         error_and_message ("Invalid character at start");
         break;
@@ -256,7 +258,6 @@ start_state (char c, enum State *state, string *word)
         // Loop back to start state
         break;
       case '(':
-        printf("%s", "Start to Subshell");
         *state = SUBSHELL;
         break;
       case '#':
@@ -303,7 +304,6 @@ normal_state (char c, enum State *state, token_array *tokens, string *word,
         next_word (tokens, word);
         break;
       case '(':
-        printf("%s", "hello world");
         *state = SUBSHELL;
         break;
       case ')':
@@ -312,6 +312,8 @@ normal_state (char c, enum State *state, token_array *tokens, string *word,
             error_and_message("Unexpected close of parenthesis");
           }
         *in_subshell = false;
+        next_word (tokens, word);
+        add_tokens (tokens, cmd_stack);
         *state = FINAL;
         break;
       case '#':
@@ -536,28 +538,46 @@ subshell_state (enum State *state, command_stack *cmd_stack, size_t depth,
                               command_stream_t s)
 {
   size_t size = 0;
-  size_t capacity = 2;
-  command_t commands =  (command_t) checked_malloc (2 * sizeof (struct command));
+  size_t capacity = 1;
+  command_t *commands = (command_t *) checked_malloc (sizeof (command_t *));
   
   bool in_subshell = true;
-  while(in_subshell)
+  while (in_subshell)
   {
     command_t cmd = parse_stream(s, depth + 1, &in_subshell);
     CHECK_GROW(commands, size, capacity);
-    commands[size] = *cmd;
+    print_command(cmd);
+    commands[size] = cmd;
     size++;
   }
 
+  // Loop to string the sequence command together
+  if (size > 1)
+  {
+    size_t i;
+    for (i = 1; i < size; i++)
+      {
+        command_t seq_cmd = (command_t) 
+              checked_malloc (sizeof (struct command));
+        seq_cmd->type = SEQUENCE_COMMAND;
+        seq_cmd->input = 0;
+        seq_cmd->output = 0;
+        seq_cmd->u.command[0] = commands[i - 1];
+        seq_cmd->u.command[1] = commands[i];
+
+        commands[i] = seq_cmd;
+      }
+  }
 
   // Create subshell command
-  command_t subshell_cmd = (command_t) checked_malloc (sizeof (struct command));
+  command_t subshell_cmd = (command_t) 
+        checked_malloc (sizeof (struct command));
   subshell_cmd->type = SUBSHELL_COMMAND;
   subshell_cmd->status = -1;
   subshell_cmd->input = 0;
   subshell_cmd->output = 0;
-  subshell_cmd->u.subshell_command = commands;
+  subshell_cmd->u.subshell_command = commands[size - 1];
 
-  print_command(subshell_cmd);
   // Add subshell command to command stack
   CHECK_GROW (cmd_stack->stack, cmd_stack->top, cmd_stack->capacity);
   cmd_stack->stack[cmd_stack->top] = subshell_cmd;
@@ -642,10 +662,16 @@ parse_stream(command_stream_t s, size_t depth, bool *in_subshell)
     {
       int i = 0;
       if (state != SUBSHELL)
-        i = GET(s);
+        {
+          i = GET(s);
+        }
+
       if (i < 0)
         {
-          if(state != NORMAL && state != START)
+          if((state != NORMAL && 
+                state != START && 
+                state != AFTER_SUBSHELL) ||
+              depth != 0)
             {
               error_and_message ("Error on last line");
               return 0;
@@ -705,7 +731,6 @@ parse_stream(command_stream_t s, size_t depth, bool *in_subshell)
             comment_state (AND, c, &state);
             break;
           case SUBSHELL:
-            printf("%s", "hello world");
             subshell_state (&state, &cmd_stack, depth, s);
             break;
           case AFTER_SUBSHELL:
