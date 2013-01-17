@@ -9,9 +9,10 @@
    static function definitions, etc.  */
 #include "alloc.h"
 #include "ctype.h"
-//#include <stdlib.h>
+#include <stdlib.h>
 #include <stdio.h>
-//#include "string.h"
+
+// Use #define DEBUG if you want to print output
 
 /*
 TODO:
@@ -46,6 +47,102 @@ enum State
     AFTER_SUBSHELL,     // 20 - State right after a closed parenthesis
     FINAL               // 21 - Finish states
   };
+
+void
+print_state(enum State state)
+{
+  switch (state)
+  {
+    case START:
+      printf("START");
+      // 0  - Initial State
+      break;
+    case COMMENT_START:
+      printf("COMMENT_START");
+      // 1  - Comment just after the start
+      break;
+    case NORMAL:
+      printf("NORMAL");
+      // 2  - Simple Command State
+      break;
+    case COMMENT_NORMAL:
+      printf("COMMENT_NORMAL");
+      // 3  - Comment after a normal word
+      break;
+    case INPUT:
+      printf("INPUT");
+      // 4  - State after an input I/O redirection
+      break;
+    case AFTER_INPUT:
+      printf("AFTER_INPUT");
+      // 5  - State just after an input has been specified
+      break;
+    case OUTPUT:
+      printf("OUTPUT");
+      // 6  - State after an output I/O redirection
+      break;
+    case AFTER_OUTPUT:
+      printf("AFTER_OUTPUT");
+      // 7  - State just after an output has been specified
+      break;
+    case SPECIAL:
+      printf("SPECIAL");
+      // 8  - State just after a backslash (\)
+      break;
+    case PIPE:
+      printf("PIPE");
+      // 9  - State just after a Pipe (|)
+      break;
+    case PIPE_SPACE:
+      printf("PIPE_SPACE");
+      // 10 - State just after a Pipe and whitespace
+      break;
+    case COMMENT_PIPE:
+      printf("COMMENT_PIPE");
+      // 11 - Comment after a pipe
+      break;
+    case OR:
+      printf("OR");
+      // 12 - State just after an Or (||)
+      break;
+    case COMMENT_OR:
+      printf("COMMENT_OR");
+      // 13 - Comment after an or
+      break;
+    case AMPERSAND:
+      printf("AMPERSAND");
+      // 14 - State just after an Ampersand (&)
+      break;
+    case AND:
+      printf("AND");
+      // 15 - State just after an And (&&)
+      break;
+    case COMMENT_AND:
+      printf("COMMENT_AND");
+      // 16 - Comment after an and
+      break;
+    case SEMI_COLON:
+      printf("SEMI_COLON");
+      // 17 - State just after a semicolon (;)
+      break;
+    case COMMENT_SEMI_COLON:
+      printf("COMMENT_SEMI_COLON");
+      // 18 - Comment just after a semi-colon
+      break;
+    case SUBSHELL:
+      printf("SUBSHELL");
+      // 19 - State while in parenthesis
+      break;
+    case AFTER_SUBSHELL:
+      printf("AFTER_SUBSHELL");
+      // 20 - State right after a closed parenthesis
+      break;
+    case FINAL:
+      printf("FINAL");
+      // 21 - Finish states
+      break;
+  };
+}
 
 /* FIXME: Define the type 'struct command_stream' here.  This should
    complete the incomplete type declaration in command.h.  */
@@ -908,8 +1005,8 @@ subshell_state (enum State *state, command_stack *cmd_stack, size_t depth,
                               command_stream_t s)
 {
   size_t size = 0;
-  size_t capacity = 1;
-  command_t *commands = (command_t *) checked_malloc (sizeof (command_t *));
+  size_t capacity = 2;
+  command_t *commands = (command_t *) checked_malloc (2 * sizeof (command_t *));
   
   bool in_subshell = true;
   while (in_subshell)
@@ -949,6 +1046,9 @@ subshell_state (enum State *state, command_stack *cmd_stack, size_t depth,
   subshell_cmd->output = 0;
   // The subshell command is the last of our sequence commands we created
   subshell_cmd->u.subshell_command = commands[size - 1];
+
+  // Free the commands
+  free (commands);
 
   // Add subshell command to command stack
   CHECK_GROW (cmd_stack->stack, cmd_stack->top, cmd_stack->capacity);
@@ -991,6 +1091,33 @@ after_subshell_state (char c, enum State *state, size_t depth, bool *in_subshell
       default:
         error_and_message("Invalid token after closed parenthesis");
         break;
+    }
+}
+
+command_t
+final_cleanup (token_array *tokens, string *word, string *input,
+                    string *output, command_stack *cmd_stack,
+                    operator_stack *op_stack)
+{
+  if (tokens->size == 0 && tokens->arr)
+    free (tokens->arr);
+  if (word->size == 0 && word->arr)
+    free (word->arr);
+  if (input->size == 0 && input->arr)
+    free (input->arr);
+  if (output->size == 0 && output->arr)
+    free (output->arr);
+  free (op_stack->stack);
+  if (cmd_stack->top == 0 && cmd_stack->stack)
+    {
+      free (cmd_stack->stack);
+      return 0;
+    }
+  else
+    {
+      command_t cmd = cmd_stack->stack[0];
+      free (cmd_stack->stack);
+      return cmd;
     }
 }
 
@@ -1048,6 +1175,11 @@ parse_stream(command_stream_t s, size_t depth, bool *in_subshell)
       if (state != SUBSHELL)
         {
           i = GET(s);
+          #ifdef DEBUG
+          printf("%c ", (char)i);
+          print_state (state);
+          printf("\n");
+          #endif
         }
 
       if (i < 0)
@@ -1149,6 +1281,10 @@ parse_stream(command_stream_t s, size_t depth, bool *in_subshell)
     }
 
   finish_op_stack (&op_stack, &cmd_stack);
-  //error (1, 0, "command reading not yet implemented");
-  return cmd_stack.stack[0];
+
+  command_t final_command = 
+          final_cleanup (&tokens, &word, &input, &output, 
+            &cmd_stack, &op_stack);
+
+  return final_command;
 }
