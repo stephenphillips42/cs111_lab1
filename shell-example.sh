@@ -8,4 +8,4 @@ a <a1 >a2&& b && c && d || e<asdf>fdsa # comments
 
 (
 hi sir < and > more
-(hello world) )
+(hello world;) )

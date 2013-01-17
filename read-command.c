@@ -824,18 +824,30 @@ after_output_state(char c, enum State *state, token_array *tokens,
 
 void
 semi_colon_state (char c, enum State *state, string *word,
-                        command_stack *cmd_stack, operator_stack *op_stack)
+                        command_stack *cmd_stack, operator_stack *op_stack, 
+                        size_t depth, bool *in_subshell)
 {
   switch (c)
     {
       case '&':
       case '|':
       case ';':
-      case ')':
         error_and_message ("Incomplete semicolon");
         break;
       case '\n':
         g_newlines++;
+        *state = FINAL;
+        break;
+      case ')':
+        if (depth == 0)
+          {
+            error_and_message ("Unexpected end of parenthesis");
+          }
+        else
+          {
+            *in_subshell = false;
+            *state = FINAL;
+          }
         break;
       case '#':
         *state = COMMENT_SEMI_COLON;
@@ -1237,7 +1249,8 @@ parse_stream(command_stream_t s, size_t depth, bool *in_subshell)
               add_char (&word, c);
             break;
           case SEMI_COLON:
-            semi_colon_state (c, &state, &word, &cmd_stack, &op_stack);
+            semi_colon_state (c, &state, &word, &cmd_stack, &op_stack, depth, 
+                              in_subshell);
             break;
           case PIPE:
             pipe_state (c, &state, &word, &cmd_stack, &op_stack);
