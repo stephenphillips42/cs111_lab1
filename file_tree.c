@@ -1,11 +1,12 @@
-#include "file_tree.h"
-#include "string.h"
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <errno.h>
+#include "string.h"
 #include "alloc.h"
+#include "file_tree.h"
 
 #define DEBUG
 #ifdef DEBUG
@@ -17,13 +18,15 @@ create_file_tree (char *filename, char written_to)
 {
   file_tree tree = checked_malloc (sizeof (struct file_tree_struct));
   tree->filename = filename;
-  tree->fd = open (filename, O_CREAT);
   
+  tree->fd = open (filename, O_CREAT | O_TRUNC | O_RDWR, 
+    S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
+  if(tree->fd < 0)
+    printf("%s\n", strerror(errno));
+
   tree->count = 1;
   tree->written_to = written_to;
   tree->left = tree->right = 0;
-
-  printf ("%s %d %d\n", filename, written_to, tree->fd);
 
   return tree;
 }
@@ -51,7 +54,7 @@ insert_file_tree (file_tree *head, char *filename, char written_to)
 }
 
 void
-free_file_tree(file_tree *head)
+free_file_tree (file_tree *head)
 {
   if(*head == 0)
     return;
@@ -64,3 +67,28 @@ free_file_tree(file_tree *head)
   free(*head);
 }
 
+void
+print_indented_file_tree (int indent, file_tree head)
+{
+  if(head->left)
+    {
+      print_indented_file_tree (indent + 2, head->left);
+      printf("%*s/", indent + 2, "");
+    }
+
+  printf (" \n%*s%s, fd: %d, wrtn: %d, cnt: %d\n", indent, "", 
+    head->filename, head->fd, head->written_to, head->count);
+  
+  if(head->right)
+    {
+      printf("%*s\\", indent + 2, "");
+      print_indented_file_tree (indent + 2, head->right);
+    }
+}
+
+void
+print_file_tree(file_tree head)
+{
+  if(head)
+    print_indented_file_tree (0, head);
+}

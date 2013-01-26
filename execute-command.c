@@ -51,10 +51,11 @@ execute_command (command_t c, bool time_travel)
      You can also use external functions defined in the GNU C Library.  */
   c = c;
   file_tree files = 0;
-  printf ("Entering...\n");
+  printf ("\n\nEntering...\n");
   get_files (c, &files);
+  print_file_tree(files);
   free_file_tree (&files);
-  printf ("Exiting...\n");
+
   time_travel = false;
   if (time_travel) { ; }
 
