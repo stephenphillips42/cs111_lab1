@@ -365,6 +365,7 @@ finish_op_stack (operator_stack *op_stack, command_stack *cmd_stack)
 }
 
 // State functions
+inline
 void
 start_state (char c, enum State *state, string *word)
 {
@@ -399,6 +400,7 @@ start_state (char c, enum State *state, string *word)
     }
 }
 
+inline
 void
 normal_state (char c, enum State *state, token_array *tokens, string *word,
                     string *input, string *output, command_stack *cmd_stack,
@@ -474,6 +476,7 @@ normal_state (char c, enum State *state, token_array *tokens, string *word,
     }
 }
 
+inline
 void
 comment_state (enum State previous_state, char c, enum State *state)
 {
@@ -489,6 +492,7 @@ comment_state (enum State previous_state, char c, enum State *state)
     }
 }
 
+inline
 void
 input_state (char c, enum State *state, token_array *tokens, string *input, 
                     string *output, command_stack *cmd_stack, size_t depth, 
@@ -590,6 +594,7 @@ input_state (char c, enum State *state, token_array *tokens, string *input,
     }
 }
 
+inline
 void
 after_input_state(char c, enum State *state, token_array *tokens,
                         string *input, string *output,
@@ -657,6 +662,7 @@ after_input_state(char c, enum State *state, token_array *tokens,
     }
 }
 
+inline
 void
 output_state (char c, enum State *state, token_array *tokens, string *output,
                     string *input, command_stack *cmd_stack, size_t depth, 
@@ -755,6 +761,7 @@ output_state (char c, enum State *state, token_array *tokens, string *output,
     }
 }
 
+inline
 void
 after_output_state(char c, enum State *state, token_array *tokens,
                           string *output, string *input,
@@ -822,6 +829,7 @@ after_output_state(char c, enum State *state, token_array *tokens,
     }
 }
 
+inline
 void
 semi_colon_state (char c, enum State *state, string *word,
                         command_stack *cmd_stack, operator_stack *op_stack, 
@@ -867,6 +875,7 @@ semi_colon_state (char c, enum State *state, string *word,
     }
 }
 
+inline
 void
 pipe_state (char c, enum State *state, string *word, 
                   command_stack *cmd_stack, operator_stack *op_stack)
@@ -904,6 +913,7 @@ pipe_state (char c, enum State *state, string *word,
     }
 }
 
+inline
 void
 pipe_space_state (char c, enum State *state, string *word)
 {
@@ -934,6 +944,7 @@ pipe_space_state (char c, enum State *state, string *word)
     }
 }
 
+inline
 void
 or_state (char c, enum State *state, string *word)
 {
@@ -964,6 +975,7 @@ or_state (char c, enum State *state, string *word)
     }
 }
 
+inline
 void
 ampersand_state (char c, enum State *state, command_stack *cmd_stack, 
                       operator_stack *op_stack)
@@ -980,6 +992,7 @@ ampersand_state (char c, enum State *state, command_stack *cmd_stack,
     }
 }
 
+inline
 void
 and_state (char c, enum State *state, string *word)
 {
@@ -1070,6 +1083,7 @@ subshell_state (enum State *state, command_stack *cmd_stack, size_t depth,
   *state = AFTER_SUBSHELL;
 }
 
+inline
 void
 after_subshell_state (char c, enum State *state, size_t depth, bool *in_subshell)
 {
