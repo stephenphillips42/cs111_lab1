@@ -53,6 +53,21 @@ insert_file_tree (file_tree *head, char *filename, char written_to)
     }
 }
 
+int
+get_file_desc (file_tree head, char *filename)
+{
+  if (head == 0)
+    return 0;
+
+  int cmp = strcmp (filename, head->filename);
+  if (cmp < 0)
+    return get_file_desc (head->left, filename);
+  else if (cmp > 0)
+    return get_file_desc (head->right, filename);
+  else 
+    return head->fd;
+}
+
 void
 free_file_tree (file_tree *head)
 {
@@ -92,3 +107,4 @@ print_file_tree(file_tree head)
   if(head)
     print_indented_file_tree (0, head);
 }
+

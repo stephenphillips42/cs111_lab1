@@ -18,5 +18,5 @@ file_tree create_file_tree (char*, char);
 int insert_file_tree (file_tree*, char*, char);
 void free_file_tree (file_tree*);
 void print_file_tree(file_tree);
-
+int get_file_desc (file_tree, char*);
 #endif
