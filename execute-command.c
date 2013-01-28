@@ -9,8 +9,11 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <error.h>
 #include <stdlib.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <error.h>
 
 #define IN_HALF 0
 #define OUT_HALF 1
@@ -69,11 +72,41 @@ execute_simple (command_t c, int input_fd, int output_fd, node_t close_list)
 
   if (pid == 0) // in child
   {
-    // replace standard input with input part of pipe
-    dup2(input_fd, STDIN_FILENO);
+    // If the input is redirected to a file, reset stdin to that file
+    if (c->input)
+      {
+        printf("%s\n", c->input);
+        int fd = open (c->input, O_RDONLY);
+        if(fd < 0)
+          perror("Cannot open file");
+        dup2(fd, STDIN_FILENO);
+        if (input_fd != STDIN_FILENO)
+          insert_node (close_list, input_fd);
+      }
+    else // Otherwise use the passed in input file descriptor
+      {
+        // replace standard input with input part of pipe
+        dup2(input_fd, STDIN_FILENO);
+      }
+
+    // If the output is redirected to a file, reset stdout to that file
+    if (c->output)
+      {
+        printf("%s\n", c->output);
+        int fd = open (c->output, O_CREAT | O_TRUNC | O_WRONLY, 
+          S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
+        if(fd < 0)
+          perror("Cannot open file");
+        if (output_fd != STDOUT_FILENO)
+          insert_node (close_list, output_fd);
+        dup2(fd, STDOUT_FILENO);
+      }
+    else // Otherwise use the passed in output file descriptor
+      {
+        // replace standard output with output part of pipe
+        dup2(output_fd, STDOUT_FILENO);
+      }
     
-    // replace standard output with output part of pipe
-    dup2(output_fd, STDOUT_FILENO);
 
     // Close neccessary files
     for(i = close_list->next; i != close_list; i = i->next)
@@ -162,7 +195,13 @@ execute_commands_helper (command_t c, int input_fd, int output_fd, node_t close_
         break;
 
       case SEQUENCE_COMMAND:
+        // TODO: Parallelize this
         execute_commands_helper (c->u.command[0], input_fd, output_fd, close_list, pid_list);
+        for (n = pid_list->next; n != pid_list; n = n->next)
+          {
+            waitpid (n->val, &status, 0);
+          }
+        while (pid_list->next != pid_list) { remove_last_element (pid_list); }
         execute_commands_helper (c->u.command[1], input_fd, output_fd, close_list, pid_list);
         break;
     }
@@ -174,12 +213,6 @@ execute_command (command_t c, bool time_travel)
   /* FIXME: Replace this with your implementation.  You may need to
      add auxiliary functions and otherwise modify the source code.
      You can also use external functions defined in the GNU C Library.  */
-  c = c;
-  file_tree files = 0;
-  printf ("Entering...\n");
-  get_files (c, &files);
-  print_file_tree(files);
-  free_file_tree (&files);
 
   // Dummy heads for doubly-linked list for close files and pids
   node_t close_list = initialize_llist();
@@ -195,8 +228,6 @@ execute_command (command_t c, bool time_travel)
     waitpid (n->val, &status, 0);
     pid_count++;
   }
-
-  printf("pids: %d\n", pid_count);
 
   time_travel = false;
   if (time_travel) { ; }

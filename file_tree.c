@@ -1,6 +1,3 @@
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <errno.h>
@@ -19,11 +16,6 @@ create_file_tree (char *filename, char written_to)
   file_tree tree = checked_malloc (sizeof (struct file_tree_struct));
   tree->filename = filename;
   
-  tree->fd = open (filename, O_CREAT | O_TRUNC | O_RDWR, 
-    S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
-  if(tree->fd < 0)
-    printf("%s\n", strerror(errno));
-
   tree->count = 1;
   tree->written_to = written_to;
   tree->left = tree->right = 0;
