@@ -3,6 +3,7 @@
 #include "command.h"
 #include "command-internals.h"
 #include "file_tree.h"
+#include "llist.h"
 
 #include "string.h"
 #include <unistd.h>
@@ -10,6 +11,9 @@
 #include <sys/wait.h>
 #include <error.h>
 #include <stdlib.h>
+
+#define IN_HALF 0
+#define OUT_HALF 1
 
 // Debug
 #include <stdio.h>
@@ -21,7 +25,6 @@ command_status (command_t c)
 {
   return c->status;
 }
-
 
 void
 get_files (command_t cmd, file_tree *head)
@@ -55,89 +58,114 @@ exit_with_status(int status)
   exit (status);
 }
 
+// How will we actually do this?
 int
-execute_simple_command (command_t c)
+execute_simple (command_t c, int input_fd, int output_fd, node_t close_list) 
 {
-        int status;
+  int pid;
+  node_t i;
+  
+  pid = fork();
 
-        // Looks for whether or not there are inputs and outputs
-        if(c->input || c->output)
-          {
-            printf ("Not implemented yet\n");
-            return -1;
-          }
+  if (pid == 0) // in child
+  {
+    // replace standard input with input part of pipe
+    dup2(input_fd, STDIN_FILENO);
+    
+    // replace standard output with output part of pipe
+    dup2(output_fd, STDOUT_FILENO);
 
-        // Forks the process so that the child process may run the
-        // command that was specified using execvp
-        pid_t p = fork ();
-        if (p < 0)
-          { exit(1); } // Error
-        if (p == 0)
-          {
-            // In child process
-            execvp (c->u.word[0], c->u.word);
-            exit(120); // Which exit status?
-          }
-        
-        // Wait for child process to exit
-        while (waitpid (p, &status, 0) < 0)
-          continue;
-
-        // Returns status of command execution
-        c->status = status;
-        return status;
+    // Close neccessary files
+    for(i = close_list->next; i != close_list; i = i->next)
+      close(i->val);
+    
+    // execute command
+    execvp(c->u.word[0], c->u.word);
+  }
+  
+  return pid;
 }
 
-int
-execute_command_helper (command_t c)
+void
+execute_commands_helper (command_t c, int input_fd, int output_fd, node_t close_list, node_t pid_list)
 {
-  printf("entering...\n");
-  int status;
+  int status, pid;
+  int pipefd[2];
+  node_t n;
   switch (c->type)
     {
-      case AND_COMMAND:
-        // Recursively runs through command tree to find simple
-        // executable commands. If the first command is successful,
-        // run the second command. If there is an error, return an error
-        // status. If both commands run successfully, return 0.
-        status = execute_command_helper (c->u.command[0]);
-        if (status)
-            exit_with_status (status);
-        return execute_command_helper (c->u.command[1]);
-        break;
-      case SEQUENCE_COMMAND:
-        // TODO: This will be parallelized in the future
-        execute_command_helper (c->u.command[0]);
-        // TODO: What is the proper behavior here?
-        // if (status)
-        //   exit_with_status (status); 
-        return execute_command_helper (c->u.command[1]);
-        break;
-      case OR_COMMAND:
-        // Recursively runs through command tree to find simple
-        // executable commands. If the first command is not successful,
-        // run the second command. If both are not succesful, return error.
-        // Otherwise, return 0. 
-        status = execute_command_helper (c->u.command[0]);
-        if (status)
-          return execute_command_helper (c->u.command[1]);
-        else
-          return status;
-        break;
-      case PIPE_COMMAND:
-        printf ("Not implemented yet\n");
-        break;
+      //int left_pid, right_pid;
       case SIMPLE_COMMAND:
-        status = execute_simple_command(c);
+        pid = execute_simple (c, input_fd, output_fd, close_list);
+        insert_node (pid_list, pid);
         break;
+
+      case PIPE_COMMAND:
+        // Set up pipe
+        pipe(pipefd);
+        
+        // Start the left side of the pipe
+        // Need to close the input half of the pipe for the left side
+        insert_node (close_list, pipefd[IN_HALF]);
+        execute_commands_helper (c->u.command[0], input_fd, pipefd[OUT_HALF], close_list, pid_list);
+        // Don't want to close the input half anymore
+        remove_last_element (close_list);
+
+        // Start the right side of the pipe
+        // Need to close the output_fd half of the pipe for the right side
+        insert_node (close_list, pipefd[OUT_HALF]);\
+        execute_commands_helper (c->u.command[1], pipefd[IN_HALF], output_fd, close_list, pid_list);
+        // Don't want to close the output half anymore
+        remove_last_element (close_list);
+
+        // Close the pipe (not needed anymore)
+        close(pipefd[IN_HALF]);
+        close(pipefd[OUT_HALF]);
+        break;
+
       case SUBSHELL_COMMAND:
-        return execute_command_helper (c->u.subshell_command);
+        // TODO: Need to parallelize this
+        execute_commands_helper (c->u.command[0], input_fd, output_fd, close_list, pid_list);
         break;
-      default:
+
+      case AND_COMMAND:
+        // Execute left side
+        execute_commands_helper (c->u.command[0], input_fd, output_fd, close_list, pid_list);
+        // Wait for the left side to either exit or finish
+        for (n = pid_list->next; n != pid_list; n = n->next)
+          {
+            waitpid (n->val, &status, 0);
+            if (status)
+              // TODO: Need to kill child processes
+              exit (status);
+          }
+        // Left side exited successfully, remove their pids from the list and execute right side
+        while (pid_list->next != pid_list) { remove_last_element (pid_list); }
+        execute_commands_helper (c->u.command[1], input_fd, output_fd, close_list, pid_list);
+        break;
+
+      case OR_COMMAND:
+        // Execute left side
+        execute_commands_helper (c->u.command[0], input_fd, output_fd, close_list, pid_list);
+        // Wait for the left side to either exit or finish
+        for (n = pid_list->next; n != pid_list; n = n->next)
+          {
+            waitpid (n->val, &status, 0);
+            if (status)
+              {
+                // Left side exited unsuccessfully, remove their pids from the list and execute right side
+                // TODO: Need to kill child processes
+                while (pid_list->next != pid_list) { remove_last_element (pid_list); }
+                execute_commands_helper (c->u.command[1], input_fd, output_fd, close_list, pid_list);
+              }
+          }
+        break;
+
+      case SEQUENCE_COMMAND:
+        execute_commands_helper (c->u.command[0], input_fd, output_fd, close_list, pid_list);
+        execute_commands_helper (c->u.command[1], input_fd, output_fd, close_list, pid_list);
         break;
     }
-    printf("Error: Unknown type of command\n");
-    exit(1);
 }
 
 void
@@ -153,7 +181,22 @@ execute_command (command_t c, bool time_travel)
   print_file_tree(files);
   free_file_tree (&files);
 
-  execute_command_helper (c);
+  // Dummy heads for doubly-linked list for close files and pids
+  node_t close_list = initialize_llist();
+  node_t pid_list = initialize_llist();
+
+  execute_commands_helper (c, STDIN_FILENO, STDOUT_FILENO, close_list, pid_list);
+
+  // Wait on all of the processes that are still running
+  node_t n;
+  int status, pid_count = 0;
+  for (n = pid_list->next; n != pid_list; n = n->next)
+  {
+    waitpid (n->val, &status, 0);
+    pid_count++;
+  }
+
+  printf("pids: %d\n", pid_count);
 
   time_travel = false;
   if (time_travel) { ; }
