@@ -1105,6 +1105,9 @@ after_subshell_state (char c, enum State *state, size_t depth, bool *in_subshell
       case ';':
         *state = SEMI_COLON;
         break;
+      case '>':
+        *state = INPUT;
+        break;
       case ')':
         if(depth == 0)
           error_and_message("Unexpected close parenthesis");
