@@ -157,6 +157,29 @@ execute_commands_helper (command_t c, int input_fd, int output_fd, node_t close_
         break;
 
       case SUBSHELL_COMMAND:
+        // If the input is redirected to a file, reset stdout to that file
+        if (c->input)
+          {
+            printf("%s\n", c->input);
+            int fd = open (c->input, O_RDONLY);
+            if(fd < 0)
+              perror("Cannot open file");
+            dup2(fd, STDIN_FILENO);
+            if (input_fd != STDIN_FILENO)
+              insert_node (close_list, input_fd);
+          }
+        // If the output is redirected to a file, reset stdout to that file
+        if (c->output)
+          {
+            printf("%s\n", c->output);
+            int fd = open (c->output, O_CREAT | O_TRUNC | O_WRONLY, 
+              S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
+            if(fd < 0)
+              perror("Cannot open file");
+            if (output_fd != STDOUT_FILENO)
+              insert_node (close_list, output_fd);
+            dup2(fd, STDOUT_FILENO);
+          }
         // TODO: Need to parallelize this
         execute_commands_helper (c->u.command[0], input_fd, output_fd, close_list, pid_list);
         break;
