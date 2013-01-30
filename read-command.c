@@ -24,28 +24,30 @@ TODO:
 
 enum State
   {
-    START,              // 0  - Initial State
-    COMMENT_START,      // 1  - Comment just after the start
-    NORMAL,             // 2  - Simple Command State
-    COMMENT_NORMAL,     // 3  - Comment after a normal word
-    INPUT,              // 4  - State after an input I/O redirection
-    AFTER_INPUT,        // 5  - State just after an input has been specified
-    OUTPUT,             // 6  - State after an output I/O redirection
-    AFTER_OUTPUT,       // 7  - State just after an output has been specified
-    SPECIAL,            // 8  - State just after a backslash (\)
-    PIPE,               // 9  - State just after a Pipe (|)
-    PIPE_SPACE,         // 10 - State just after a Pipe and whitespace
-    COMMENT_PIPE,       // 11 - Comment after a pipe
-    OR,                 // 12 - State just after an Or (||)
-    COMMENT_OR,         // 13 - Comment after an or
-    AMPERSAND,          // 14 - State just after an Ampersand (&)
-    AND,                // 15 - State just after an And (&&)
-    COMMENT_AND,        // 16 - Comment after an and
-    SEMI_COLON,         // 17 - State just after a semicolon (;)
-    COMMENT_SEMI_COLON, // 18 - Comment just after a semi-colon
-    SUBSHELL,           // 19 - State while in parenthesis
-    AFTER_SUBSHELL,     // 20 - State right after a closed parenthesis
-    FINAL               // 21 - Finish states
+    START,                  // 0  - Initial State
+    COMMENT_START,          // 1  - Comment just after the start
+    NORMAL,                 // 2  - Simple Command State
+    COMMENT_NORMAL,         // 3  - Comment after a normal word
+    INPUT,                  // 4  - State after an input I/O redirection
+    AFTER_INPUT,            // 5  - State just after an input has been specified
+    OUTPUT,                 // 6  - State after an output I/O redirection
+    AFTER_OUTPUT,           // 7  - State just after an output has been specified
+    SPECIAL,                // 8  - State just after a backslash (\)
+    PIPE,                   // 9  - State just after a Pipe (|)
+    PIPE_SPACE,             // 10 - State just after a Pipe and whitespace
+    COMMENT_PIPE,           // 11 - Comment after a pipe
+    OR,                     // 12 - State just after an Or (||)
+    COMMENT_OR,             // 13 - Comment after an or
+    AMPERSAND,              // 14 - State just after an Ampersand (&)
+    AND,                    // 15 - State just after an And (&&)
+    COMMENT_AND,            // 16 - Comment after an and
+    SEMI_COLON,             // 17 - State just after a semicolon (;)
+    COMMENT_SEMI_COLON,     // 18 - Comment just after a semi-colon
+    SUBSHELL,               // 19 - State while in parenthesis
+    AFTER_SUBSHELL,         // 20 - State right after a closed parenthesis
+    AFTER_SUBSHELL_INPUT,   // 21 - State right after a closed parenthesis and an input I/O redirection
+    AFTER_SUBSHELL_OUTPUT,  // 22 - State right after a closed parenthesis and an output I/O redirection
+    FINAL                   // 23 - Finish states
   };
 
 void
@@ -137,9 +139,17 @@ print_state(enum State state)
       printf("AFTER_SUBSHELL");
       // 20 - State right after a closed parenthesis
       break;
+    case AFTER_SUBSHELL_INPUT:
+      printf("AFTER SUBSHELL INPUT");
+      // 21 - State right after a closed parenthesis and an input I/O redirection
+      break;
+    case AFTER_SUBSHELL_OUTPUT:
+      printf("AFTER SUBSHELL OUTPUT");
+      // 22 - State right after a closed parenthesis and an output I/O redirection
+      break;
     case FINAL:
       printf("FINAL");
-      // 21 - Finish states
+      // 23 - Finish states
       break;
   };
 }
@@ -504,17 +514,30 @@ input_state (char c, enum State *state, token_array *tokens, string *input,
       //case '\\':
       //  state = SPECIAL;
       //  break;
+
       case '&':
+        if(input->size == 0)
+          {
+            error_and_message ("Unexpected & Token found before input");
+          }
         end_word(input);
         add_tokens (tokens, cmd_stack, input, output);
         *state = AMPERSAND;
         break;
       case '|':
+        if(input->size == 0)
+          {
+            error_and_message ("Unexpected & Token found before input");
+          }
         end_word(input);
         add_tokens (tokens, cmd_stack, input, output);
         *state = PIPE;
         break;
       case ';':
+        if(input->size == 0)
+          {
+            error_and_message ("Unexpected & Token found before input");
+          }
         end_word(input);
         add_tokens (tokens, cmd_stack, input, output);
         *state = SEMI_COLON;
@@ -671,16 +694,28 @@ output_state (char c, enum State *state, token_array *tokens, string *output,
   switch (c)
     {
       case '&':
+        if(output->size == 0)
+          {
+            error_and_message ("Unexpected & Token found before input");
+          }
         end_word(output);
         add_tokens (tokens, cmd_stack, input, output);
         *state = AMPERSAND;
         break;
       case '|':
+        if(output->size == 0)
+          {
+            error_and_message ("Unexpected & Token found before input");
+          }
         end_word(output);
         add_tokens (tokens, cmd_stack, input, output);
         *state = PIPE;
         break;
       case ';':
+        if(output->size == 0)
+          {
+            error_and_message ("Unexpected & Token found before input");
+          }      
         end_word(output);
         add_tokens (tokens, cmd_stack, input, output);
         *state = SEMI_COLON;
@@ -714,6 +749,8 @@ output_state (char c, enum State *state, token_array *tokens, string *output,
           }
         else
           {
+            end_word(output);
+            add_tokens (tokens, cmd_stack, input, output);
             *state = INPUT;
           }
         break;
@@ -1106,7 +1143,10 @@ after_subshell_state (char c, enum State *state, size_t depth, bool *in_subshell
         *state = SEMI_COLON;
         break;
       case '>':
-        *state = INPUT;
+        *state = AFTER_SUBSHELL_OUTPUT;
+        break;
+      case '<':
+        *state = AFTER_SUBSHELL_INPUT;
         break;
       case ')':
         if(depth == 0)
@@ -1119,6 +1159,270 @@ after_subshell_state (char c, enum State *state, size_t depth, bool *in_subshell
         break;
       default:
         error_and_message("Invalid token after closed parenthesis");
+        break;
+    }
+}
+
+inline
+void
+after_subshell_input_state (char c, enum State *state, string *input, 
+                    string *output, command_stack *cmd_stack, size_t depth, 
+                    bool *in_subshell)
+{
+  switch (c)
+    {
+      // TODO: Need to add more complex error handling in case word already completed!!
+      //case '\\':
+      //  state = SPECIAL;
+      //  break;
+      case '&':
+        if(input->size == 0)
+          {
+            error_and_message ("Unexpected & Token found before input");
+          }      
+        end_word(input);
+        cmd_stack->stack[cmd_stack->top-1]->input = input->arr;
+        input->size = 0;
+        input->capacity = 0;
+        input->arr = 0;
+        *state = AMPERSAND;
+        break;
+      case '|':
+        if(input->size == 0)
+          {
+            error_and_message ("Unexpected & Token found before input");
+          }
+        end_word(input);
+        cmd_stack->stack[cmd_stack->top-1]->input = input->arr;
+        input->size = 0;
+        input->capacity = 0;
+        input->arr = 0;        
+        *state = PIPE;
+        break;
+      case ';':
+        if(input->size == 0)
+          {
+            error_and_message ("Unexpected & Token found before input");
+          }
+        end_word(input);
+        cmd_stack->stack[cmd_stack->top-1]->input = input->arr;
+        input->size = 0;
+        input->capacity = 0;
+        input->arr = 0;        
+        *state = SEMI_COLON;
+        break;
+      case '<':
+        error_and_message ("Cannot redirect multiple input");
+        break;
+      case '>':
+        if (output->size != 0)
+          {
+            error_and_message ("Cannot redirect multiple output");
+          }
+        else
+          {
+            end_word(input);
+            cmd_stack->stack[cmd_stack->top-1]->input = input->arr;
+            input->size = 0;
+            input->capacity = 0;
+             input->arr = 0;        
+            *state = OUTPUT;
+          }
+        break;
+      case '(':
+        error_and_message ("I/O redirection incomplete");
+        break;
+      case ')':
+        if(depth == 0)
+          {
+            error_and_message ("Unexpected end of parenthesis");
+          }
+        else
+          {
+            end_word(input);
+            cmd_stack->stack[cmd_stack->top-1]->input = input->arr;
+            input->size = 0;
+            input->capacity = 0;
+            input->arr = 0;      
+            *in_subshell = false;
+            *state = FINAL;
+          }
+        break;
+      case ' ':
+      case '\t':
+        // If we are not in the middle of a word
+        if (input->size != 0)
+          {
+            end_word(input);
+            cmd_stack->stack[cmd_stack->top-1]->input = input->arr;
+            input->size = 0;
+            input->capacity = 0;
+            input->arr = 0;
+            *state = AFTER_INPUT;
+          }
+        break;
+      case '#':
+        // If we are not in the middle of a word
+        if (input->size == 0)
+          {
+            error_and_message ("Unspecified input");
+          }
+        else
+          {
+            add_char(input, c);
+          }
+        break;
+      case '\n':
+        g_newlines++;
+        // If we are not in the middle of a word
+        if (input->size == 0)
+          {
+            error_and_message ("I/O redirection incomplete");
+          }
+        else
+          {
+            end_word(input);
+            cmd_stack->stack[cmd_stack->top-1]->input = input->arr;
+            input->size = 0;
+            input->capacity = 0;
+            input->arr = 0;
+            *state = FINAL;
+          }
+        break;
+      default:
+        if (input->arr == 0)
+          {
+            input->capacity = 8;
+            input->arr = (char *) checked_malloc (8 * sizeof (char *));
+          }
+        add_char (input, c);
+        break;
+    }
+}
+
+inline
+void
+after_subshell_output_state (char c, enum State *state, string *output,
+                    string *input, command_stack *cmd_stack, size_t depth, 
+                    bool *in_subshell)
+{
+  switch (c)
+    {
+      case '&':
+        if(output->size == 0)
+          {
+            error_and_message ("Unexpected & Token found before input");
+          }
+        end_word(output);
+        cmd_stack->stack[cmd_stack->top-1]->output = output->arr;
+        output->size = 0;
+        output->capacity = 0;
+        output->arr = 0;        
+        *state = AMPERSAND;
+        break;
+      case '|':
+        if(output->size == 0)
+          {
+            error_and_message ("Unexpected & Token found before input");
+          }
+        end_word(output);
+        cmd_stack->stack[cmd_stack->top-1]->output = output->arr;
+        output->size = 0;
+        output->capacity = 0;
+        output->arr = 0;
+        *state = PIPE;
+        break;
+      case ';':
+        if(output->size == 0)
+          {
+            error_and_message ("Unexpected & Token found before input");
+          }      
+        end_word(output);
+        cmd_stack->stack[cmd_stack->top-1]->output = output->arr;
+        output->size = 0;
+        output->capacity = 0;
+        output->arr = 0;
+        *state = SEMI_COLON;
+        break;
+      case ')':
+        if (depth == 0)
+          {
+            error_and_message ("Unexpected end of parenthesis");
+          }
+        else
+          {
+            end_word(output);
+            cmd_stack->stack[cmd_stack->top-1]->output = output->arr;
+            output->size = 0;
+            output->capacity = 0;
+            output->arr = 0;
+            *in_subshell = false;
+            *state = FINAL;
+          }
+        break;
+      case '(':
+        error_and_message ("I/O redirection incomplete");
+        break;
+      //case '\\':
+      //  state = SPECIAL;
+      //  break;
+      case '>':
+        error_and_message ("Cannot redirect multiple output");
+        break;
+      case '<':
+        if (input->size != 0)
+          {
+            error_and_message ("Cannot redirect multiple input");
+          }
+        else
+          {
+            end_word(output);
+            output->size = 0;
+            output->capacity = 0;
+            output->arr = 0;
+            *state = INPUT;
+          }
+        break;
+      case ' ':
+      case '\t':
+        // If we are in the middle of a word
+        if (output->size != 0)
+          {
+            end_word(output);
+            *state = AFTER_OUTPUT;
+          }
+        break;
+      case '#':
+        // If we are not in the middle of a word
+        if (output->size == 0)
+          {
+            error_and_message ("Unspecified output");
+          }
+        else
+          {
+            add_char (output, c);
+          }
+        break;
+      case '\n':
+        g_newlines++;
+        // If we are not in the middle of a word
+        if (output->size == 0)
+          {
+            error_and_message ("I/O redirection incomplete");
+          }
+        else
+          {
+            end_word(output);
+            *state = FINAL;
+          }
+        break;
+      default:
+        if (output->arr == 0)
+          {
+            output->capacity = 8;
+            output->arr = (char *) checked_malloc (8 * sizeof (char *));
+          }
+        add_char (output, c);
         break;
     }
 }
@@ -1297,8 +1601,15 @@ parse_stream(command_stream_t s, size_t depth, bool *in_subshell)
             subshell_state (&state, &cmd_stack, depth, s);
             break;
           case AFTER_SUBSHELL:
-            after_subshell_state(c, &state, depth, in_subshell);
+            after_subshell_state (c, &state, depth, in_subshell);
             break;
+          case AFTER_SUBSHELL_INPUT:
+            after_subshell_input_state (c, &state, &input, &output, &cmd_stack,
+                                depth, in_subshell);
+            break;
+          case AFTER_SUBSHELL_OUTPUT:
+            after_subshell_output_state (c, &state, &output, &input, &cmd_stack,
+                            depth, in_subshell);
           default:
             break;
         }
