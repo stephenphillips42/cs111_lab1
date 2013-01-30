@@ -1190,7 +1190,7 @@ after_subshell_input_state (char c, enum State *state, string *input,
       case '|':
         if(input->size == 0)
           {
-            error_and_message ("Unexpected & Token found before input");
+            error_and_message ("Unexpected | Token found before input");
           }
         end_word(input);
         cmd_stack->stack[cmd_stack->top-1]->input = input->arr;
@@ -1202,7 +1202,7 @@ after_subshell_input_state (char c, enum State *state, string *input,
       case ';':
         if(input->size == 0)
           {
-            error_and_message ("Unexpected & Token found before input");
+            error_and_message ("Unexpected ; Token found before input");
           }
         end_word(input);
         cmd_stack->stack[cmd_stack->top-1]->input = input->arr;
@@ -1323,7 +1323,7 @@ after_subshell_output_state (char c, enum State *state, string *output,
       case '|':
         if(output->size == 0)
           {
-            error_and_message ("Unexpected & Token found before input");
+            error_and_message ("Unexpected | Token found before input");
           }
         end_word(output);
         cmd_stack->stack[cmd_stack->top-1]->output = output->arr;
@@ -1335,7 +1335,7 @@ after_subshell_output_state (char c, enum State *state, string *output,
       case ';':
         if(output->size == 0)
           {
-            error_and_message ("Unexpected & Token found before input");
+            error_and_message ("Unexpected ; Token found before input");
           }      
         end_word(output);
         cmd_stack->stack[cmd_stack->top-1]->output = output->arr;
@@ -1377,6 +1377,7 @@ after_subshell_output_state (char c, enum State *state, string *output,
         else
           {
             end_word(output);
+            cmd_stack->stack[cmd_stack->top-1]->output = output->arr;
             output->size = 0;
             output->capacity = 0;
             output->arr = 0;
@@ -1389,6 +1390,10 @@ after_subshell_output_state (char c, enum State *state, string *output,
         if (output->size != 0)
           {
             end_word(output);
+            cmd_stack->stack[cmd_stack->top-1]->output = output->arr;
+            output->size = 0;
+            output->capacity = 0;
+            output->arr = 0;
             *state = AFTER_OUTPUT;
           }
         break;
@@ -1413,6 +1418,10 @@ after_subshell_output_state (char c, enum State *state, string *output,
         else
           {
             end_word(output);
+            cmd_stack->stack[cmd_stack->top-1]->output = output->arr;
+            output->size = 0;
+            output->capacity = 0;
+            output->arr = 0;
             *state = FINAL;
           }
         break;
