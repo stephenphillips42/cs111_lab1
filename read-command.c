@@ -24,30 +24,32 @@ TODO:
 
 enum State
   {
-    START,                  // 0  - Initial State
-    COMMENT_START,          // 1  - Comment just after the start
-    NORMAL,                 // 2  - Simple Command State
-    COMMENT_NORMAL,         // 3  - Comment after a normal word
-    INPUT,                  // 4  - State after an input I/O redirection
-    AFTER_INPUT,            // 5  - State just after an input has been specified
-    OUTPUT,                 // 6  - State after an output I/O redirection
-    AFTER_OUTPUT,           // 7  - State just after an output has been specified
-    SPECIAL,                // 8  - State just after a backslash (\)
-    PIPE,                   // 9  - State just after a Pipe (|)
-    PIPE_SPACE,             // 10 - State just after a Pipe and whitespace
-    COMMENT_PIPE,           // 11 - Comment after a pipe
-    OR,                     // 12 - State just after an Or (||)
-    COMMENT_OR,             // 13 - Comment after an or
-    AMPERSAND,              // 14 - State just after an Ampersand (&)
-    AND,                    // 15 - State just after an And (&&)
-    COMMENT_AND,            // 16 - Comment after an and
-    SEMI_COLON,             // 17 - State just after a semicolon (;)
-    COMMENT_SEMI_COLON,     // 18 - Comment just after a semi-colon
-    SUBSHELL,               // 19 - State while in parenthesis
-    AFTER_SUBSHELL,         // 20 - State right after a closed parenthesis
-    AFTER_SUBSHELL_INPUT,   // 21 - State right after a closed parenthesis and an input I/O redirection
-    AFTER_SUBSHELL_OUTPUT,  // 22 - State right after a closed parenthesis and an output I/O redirection
-    FINAL                   // 23 - Finish states
+    START,                        // 0  - Initial State
+    COMMENT_START,                // 1  - Comment just after the start
+    NORMAL,                       // 2  - Simple Command State
+    COMMENT_NORMAL,               // 3  - Comment after a normal word
+    INPUT,                        // 4  - State after an input I/O redirection
+    AFTER_INPUT,                  // 5  - State just after an input has been specified
+    OUTPUT,                       // 6  - State after an output I/O redirection
+    AFTER_OUTPUT,                 // 7  - State just after an output has been specified
+    SPECIAL,                      // 8  - State just after a backslash (\)
+    PIPE,                         // 9  - State just after a Pipe (|)
+    PIPE_SPACE,                   // 10 - State just after a Pipe and whitespace
+    COMMENT_PIPE,                 // 11 - Comment after a pipe
+    OR,                           // 12 - State just after an Or (||)
+    COMMENT_OR,                   // 13 - Comment after an or
+    AMPERSAND,                    // 14 - State just after an Ampersand (&)
+    AND,                          // 15 - State just after an And (&&)
+    COMMENT_AND,                  // 16 - Comment after an and
+    SEMI_COLON,                   // 17 - State just after a semicolon (;)
+    COMMENT_SEMI_COLON,           // 18 - Comment just after a semi-colon
+    SUBSHELL,                     // 19 - State while in parenthesis
+    AFTER_SUBSHELL,               // 20 - State right after a closed parenthesis
+    AFTER_SUBSHELL_INPUT,         // 21 - State after SUBSHELL input I/O redirection is complete
+    AFTER_SUBSHELL_OUTPUT,        // 22 - State after SUBSHELL output I/O redirection is complete
+    AFTER_AFTER_SUBSHELL_INPUT,   // 23 - State right after a closed parenthesis and an input I/O redirection
+    AFTER_AFTER_SUBSHELL_OUTPUT,  // 24 - State right after a closed parenthesis and an output I/O redirection
+    FINAL                         // 25 - Finish states
   };
 
 void
@@ -147,6 +149,15 @@ print_state(enum State state)
       printf("AFTER SUBSHELL OUTPUT");
       // 22 - State right after a closed parenthesis and an output I/O redirection
       break;
+    case AFTER_AFTER_SUBSHELL_INPUT:
+      printf("AFTER AFTER SUBSHELL INPUT\n");
+      // 23 - State right after a closed parenthesis and an input I/O redirection
+      break;
+    case AFTER_AFTER_SUBSHELL_OUTPUT:
+      printf("AFTER AFTER SUBSHELL OUTPUT\n");
+      // 24 - State right after a closed parenthesis and an output I/O redirection
+      break;
+
     case FINAL:
       printf("FINAL");
       // 23 - Finish states
@@ -1148,6 +1159,9 @@ after_subshell_state (char c, enum State *state, size_t depth, bool *in_subshell
       case '<':
         *state = AFTER_SUBSHELL_INPUT;
         break;
+      case '#':
+        *state = COMMENT_NORMAL;
+        break;
       case ')':
         if(depth == 0)
           error_and_message("Unexpected close parenthesis");
@@ -1394,7 +1408,7 @@ after_subshell_output_state (char c, enum State *state, string *output,
             output->size = 0;
             output->capacity = 0;
             output->arr = 0;
-            *state = AFTER_OUTPUT;
+            *state = AFTER_AFTER_SUBSHELL_OUTPUT;
           }
         break;
       case '#':
@@ -1432,6 +1446,143 @@ after_subshell_output_state (char c, enum State *state, string *output,
             output->arr = (char *) checked_malloc (8 * sizeof (char *));
           }
         add_char (output, c);
+        break;
+    }
+}
+
+inline
+void
+after_after_subshell_input_state(char c, enum State *state, token_array *tokens,
+                        string *input, string *output,
+                        command_stack *cmd_stack, size_t depth,
+                        bool *in_subshell)
+{
+  switch (c)
+    {
+      case '&':
+        add_tokens (tokens, cmd_stack, input, output);
+        *state = AMPERSAND;
+        break;
+      case '|':
+        add_tokens (tokens, cmd_stack, input, output);
+        *state = PIPE;
+        break;
+      case ';':
+        add_tokens (tokens, cmd_stack, input, output);
+        *state = SEMI_COLON;
+        break;
+      case '<':
+        error_and_message ("Cannot redirect multiple input");
+        break;
+      case '>':
+        if (output->size != 0)
+          {
+            error_and_message ("Cannot redirect multiple output");
+          }
+        else
+          {
+            *state = AFTER_SUBSHELL_OUTPUT;
+          }
+        break;
+      case ')':
+        if(depth == 0)
+          {
+            error_and_message ("Unexpected end of parenthesis");
+          }
+        else
+          {
+            add_tokens (tokens, cmd_stack, input, output);
+            *in_subshell = false;
+            *state = FINAL;
+          }
+        break;
+      case '\n':
+        g_newlines++;
+        add_tokens (tokens, cmd_stack, input, output);
+        *state = FINAL;
+        break;
+      case '#':
+        add_tokens (tokens, cmd_stack, input, output);
+        *state = COMMENT_NORMAL;
+        break;
+      case ' ':
+      case '\t':
+        // Ignore whitespace in this state
+        break;
+      case '(':
+        error_and_message ("Unexpected parenthesis");
+        break;
+      default:
+        error_and_message ("Cannot have multiple input files");
+        break;
+    }
+}
+
+// REFACTOR THIS!!!
+inline
+void
+after_after_subshell_output_state(char c, enum State *state, token_array *tokens,
+                          string *output, string *input,
+                          command_stack *cmd_stack, size_t depth,
+                          bool *in_subshell)
+{
+  switch (c)
+    {
+      case '&':
+        add_tokens (tokens, cmd_stack, input, output);
+        *state = AMPERSAND;
+        break;
+      case '|':
+        add_tokens (tokens, cmd_stack, input, output);
+        *state = PIPE;
+        break;
+      case ';':
+        add_tokens (tokens, cmd_stack, input, output);
+        *state = SEMI_COLON;
+        break;
+      case '>':
+        error_and_message ("Cannot redirect multiple output");
+        break;
+      case '<':
+        if (input->size != 0)
+          {
+            error_and_message ("Cannot redirect multiple input");
+          }
+        else
+          {
+            *state = AFTER_SUBSHELL_INPUT;
+          }
+        break;
+      case ')':
+        if(depth == 0)
+          {
+            error_and_message ("Unexpected end of parenthesis");
+          }
+        else
+          {
+            add_tokens (tokens, cmd_stack, input, output);
+            *in_subshell = false;
+            *state = FINAL;
+          }
+        break;
+      case '\n':
+        g_newlines++;
+        add_tokens (tokens, cmd_stack, input, output);
+        *state = FINAL;
+        break;
+      case '#':
+        add_tokens (tokens, cmd_stack, input, output);
+        *state = COMMENT_NORMAL;
+        break;
+      case ' ':
+      case '\t':
+        // Ignore whitespace in this state
+        break;
+      case '(':
+        error_and_message ("Unexpected parenthesis");
+        break;
+      default:
+        error_and_message ("Cannot have multiple output files");
         break;
     }
 }
@@ -1619,6 +1770,15 @@ parse_stream(command_stream_t s, size_t depth, bool *in_subshell)
           case AFTER_SUBSHELL_OUTPUT:
             after_subshell_output_state (c, &state, &output, &input, &cmd_stack,
                             depth, in_subshell);
+            break;
+          case AFTER_AFTER_SUBSHELL_INPUT:
+            after_after_subshell_input_state (c, &state, &tokens, &input, 
+                            &output, &cmd_stack, depth, in_subshell);
+            break;
+          case AFTER_AFTER_SUBSHELL_OUTPUT:
+            after_after_subshell_output_state (c, &state, &tokens, &input,
+                            &output, &cmd_stack, depth, in_subshell);
+            break;
           default:
             break;
         }
