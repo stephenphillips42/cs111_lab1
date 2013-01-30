@@ -3,21 +3,21 @@
 tmp=$0-$$.tmp
 mkdir "$tmp" || exit
 
-echo "$tmp"
-
 (
 cd "$tmp" || exit
 
-pwd
-
 cat > test.sh <<'EOF'
-#echo hello
+echo hello
 
-#echo hello world i have ice cream | grep h
+echo hello world i have ice cream | grep h
 
-#(echo hello world || echo fail)
+(echo hello world || echo fail)
 
-#(echo hello world && echo fail)
+(echo hello world && echo fail)
+
+echo hello world || echo --badbadbad
+
+echo hello world && echo --badbadbad || echo nothing to it
 
 #(echo hello world && echo fail) > test.tmp
 
@@ -25,24 +25,18 @@ cat > test.sh <<'EOF'
 
 (echo hello world | tr eo oe) | (cat - | cut -b 1-4 && echo finished)
 
-#echo hello my world is falling apart > test2.tmp
+echo hello my world is falling apart > test2.tmp
 
-#cat < test2.tmp | tr aeiou -----
+cat < test2.tmp | tr aeiou -----
+
+(echo hello ; ls --bob ; ) && ls
+
+(echo hello | tr e a) | (cat && echo failure)
+
+( cat previous_examples && cat llish.h ) | grep pid | tr aeiou ----- | cut -b 1-10 
 
 EOF
-
-cat > test.exp <<'EOF'
-hello
-hello world i have ice cream
-hello world
-hello world
-fail
-hello world
-fail
-holl
-finished
-h-ll- my w-rld -s f-ll-ng -p-rt
-EOF
+bash test.sh > test.exp
 
 ../timetrash test.sh >test.out 2>test.err || exit
 
