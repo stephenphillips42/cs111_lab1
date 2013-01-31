@@ -1,13 +1,5 @@
-#echo hi > out < s.sh
 
-#(echo hello ; ls --bob ; ) && ls
-
-#(echo hello | tr e a) | (cat - && echo failure)
-#(echo hello world && echo fail) > test.tmp
-(echo hello world && echo fail) > test.tmp | cat ./test.tmp
-
-#(echo hello | (cat))
-
+cat < test2.tmp | (cat - | grep is | (echo hello)) | tr aeiou -----
 #( cat previous_examples && cat llish.h ) | grep pid | tr aeiou ----- | cut -b 1-10 
 
 # need to deal with this ONE case ... uhg
