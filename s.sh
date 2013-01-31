@@ -2,7 +2,9 @@
 
 #(echo hello ; ls --bob ; ) && ls
 
-(echo hello | tr e a) | (cat - && echo failure)
+#(echo hello | tr e a) | (cat - && echo failure)
+#(echo hello world && echo fail) > test.tmp
+(echo hello world && echo fail) > test.tmp | cat ./test.tmp
 
 #(echo hello | (cat))
 

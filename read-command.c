@@ -1452,23 +1452,18 @@ after_subshell_output_state (char c, enum State *state, string *output,
 
 inline
 void
-after_after_subshell_input_state(char c, enum State *state, token_array *tokens,
-                        string *input, string *output,
-                        command_stack *cmd_stack, size_t depth,
-                        bool *in_subshell)
+after_after_subshell_input_state(char c, enum State *state, string *output,
+                        size_t depth, bool *in_subshell)
 {
   switch (c)
     {
       case '&':
-        add_tokens (tokens, cmd_stack, input, output);
         *state = AMPERSAND;
         break;
       case '|':
-        add_tokens (tokens, cmd_stack, input, output);
         *state = PIPE;
         break;
       case ';':
-        add_tokens (tokens, cmd_stack, input, output);
         *state = SEMI_COLON;
         break;
       case '<':
@@ -1491,18 +1486,15 @@ after_after_subshell_input_state(char c, enum State *state, token_array *tokens,
           }
         else
           {
-            add_tokens (tokens, cmd_stack, input, output);
             *in_subshell = false;
             *state = FINAL;
           }
         break;
       case '\n':
         g_newlines++;
-        add_tokens (tokens, cmd_stack, input, output);
         *state = FINAL;
         break;
       case '#':
-        add_tokens (tokens, cmd_stack, input, output);
         *state = COMMENT_NORMAL;
         break;
       case ' ':
@@ -1521,23 +1513,18 @@ after_after_subshell_input_state(char c, enum State *state, token_array *tokens,
 // REFACTOR THIS!!!
 inline
 void
-after_after_subshell_output_state(char c, enum State *state, token_array *tokens,
-                          string *output, string *input,
-                          command_stack *cmd_stack, size_t depth,
-                          bool *in_subshell)
+after_after_subshell_output_state(char c, enum State *state, string *input,
+                          size_t depth, bool *in_subshell)
 {
   switch (c)
     {
       case '&':
-        add_tokens (tokens, cmd_stack, input, output);
         *state = AMPERSAND;
         break;
       case '|':
-        add_tokens (tokens, cmd_stack, input, output);
         *state = PIPE;
         break;
       case ';':
-        add_tokens (tokens, cmd_stack, input, output);
         *state = SEMI_COLON;
         break;
       case '>':
@@ -1560,18 +1547,15 @@ after_after_subshell_output_state(char c, enum State *state, token_array *tokens
           }
         else
           {
-            add_tokens (tokens, cmd_stack, input, output);
             *in_subshell = false;
             *state = FINAL;
           }
         break;
       case '\n':
         g_newlines++;
-        add_tokens (tokens, cmd_stack, input, output);
         *state = FINAL;
         break;
       case '#':
-        add_tokens (tokens, cmd_stack, input, output);
         *state = COMMENT_NORMAL;
         break;
       case ' ':
@@ -1772,12 +1756,10 @@ parse_stream(command_stream_t s, size_t depth, bool *in_subshell)
                             depth, in_subshell);
             break;
           case AFTER_AFTER_SUBSHELL_INPUT:
-            after_after_subshell_input_state (c, &state, &tokens, &input, 
-                            &output, &cmd_stack, depth, in_subshell);
+            after_after_subshell_input_state (c, &state, &output, depth, in_subshell);
             break;
           case AFTER_AFTER_SUBSHELL_OUTPUT:
-            after_after_subshell_output_state (c, &state, &tokens, &input,
-                            &output, &cmd_stack, depth, in_subshell);
+            after_after_subshell_output_state (c, &state, &input, depth, in_subshell);
             break;
           default:
             break;
