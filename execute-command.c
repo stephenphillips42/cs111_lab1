@@ -63,6 +63,34 @@ print_list(node_t head)
 }
 
 void
+print_cmdtype(command_t c)
+{
+  switch (c->type)
+  {
+    case AND_COMMAND:
+      printf("AND_COMMAND\n");
+      break;         
+    case SEQUENCE_COMMAND:
+      printf("SEQUENCE_COMMAND\n");
+      break;    
+    case OR_COMMAND:
+      printf("OR_COMMAND\n");
+      break;          
+    case PIPE_COMMAND:
+      printf("PIPE_COMMAND\n");
+      break;        
+    case SIMPLE_COMMAND:
+      printf("SIMPLE_COMMAND\n");
+      break;      
+    case SUBSHELL_COMMAND:
+      printf("SUBSHELL_COMMAND\n");
+      break;    
+    default:
+      printf("Unknown\n");
+  }
+}
+
+void
 exit_with_status(int status)
 {
   // FOR DEBUGGING
@@ -75,11 +103,12 @@ void execute_commands_helper (command_t, int, int, node_t, node_t);
 int
 execute_simple (command_t c, int input_fd, int output_fd, node_t close_list) 
 {
-  int pid = 0;
+  int pid;
   node_t n;
   
   if (strcmp(c->u.word[0], "exec") == 0)
     {
+      pid = 0;
       // get rid of "exec" in front
       int i;
       for (i = 0; c->u.word[i]; i++)
@@ -149,6 +178,7 @@ execute_subshell_command (command_t c, int input_fd, int output_fd, node_t close
   node_t n;
   
   pid = fork();
+  //printf("Forked pid: %d\n", pid);
   if (pid == 0) // In child
   {
     // If the input is redirected to a file, reset stdout to that file
@@ -188,15 +218,13 @@ execute_subshell_command (command_t c, int input_fd, int output_fd, node_t close
     // TODO: Need to parallelize this
     execute_commands_helper (c->u.subshell_command, input_fd, output_fd, close_list, pid_list);
 
-    int final_status = 0;
     // Wait for child processes
     for(n = pid_list->next; n != pid_list; n = n->next)
       {
         waitpid(n->val, &status, 0);
-        if (status)
-          final_status = (status);
       }
-    exit(final_status);
+ 
+    exit(!!status);
   }
 
   return pid;
@@ -208,6 +236,7 @@ execute_commands_helper (command_t c, int input_fd, int output_fd, node_t close_
   int status = 0, pid;
   int pipefd[2];
   node_t n;
+
   switch (c->type)
     {
       //int left_pid, right_pid;
@@ -241,13 +270,11 @@ execute_commands_helper (command_t c, int input_fd, int output_fd, node_t close_
         break;
 
       case SUBSHELL_COMMAND:
-
         pid = execute_subshell_command (c, input_fd, output_fd, close_list, pid_list);
         insert_node (pid_list, pid);
         break;
 
       case AND_COMMAND:
-
         // Execute left side
         execute_commands_helper (c->u.command[0], input_fd, output_fd, close_list, pid_list);
         
@@ -258,18 +285,15 @@ execute_commands_helper (command_t c, int input_fd, int output_fd, node_t close_
         // Wait for the left side to either exit or finish
         for (n = pid_list->next; n != pid_list; n = n->next)
           {
-            if(waitpid (n->val, &status, 0) < 0)
+            if((pid = waitpid (n->val, &status, 0)) < 0)
               {
-                perror("OOPS");
+                perror("Error in process");
+                printf("Unexpected error in process %d", n->val);
               }
-            else if (status)
-              {
-
-                if (output_fd != STDOUT_FILENO)
-                  insert_node (close_list, output_fd);
-                c->status = status;
-                return;
-              }
+          }
+        if (status) // If we get a bad signal in the last command
+          {
+            return;
           }
         // Left side exited successfully, remove their pids from the list and execute right side
         while (pid_list->next != pid_list)
@@ -331,7 +355,6 @@ execute_command (command_t c, bool time_travel)
   node_t pid_list = initialize_llist();
 
   execute_commands_helper (c, STDIN_FILENO, STDOUT_FILENO, close_list, pid_list);
-
   // Close all leftover open files
   for (n = close_list->next; n != close_list; n = n->next)
     close(n->val);
