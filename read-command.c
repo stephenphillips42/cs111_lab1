@@ -197,10 +197,12 @@ typedef struct operator_stack_ {
 } operator_stack;
 
 #define GET(cmd_strm) cmd_strm->get(cmd_strm->arg)
-#define CHECK_GROW(arr, size, capacity) \
+#define CHECK_GROW(arr, size, capacity, unit) \
     if (capacity <= size) \
       { \
-        checked_grow_alloc ((void *) arr, &capacity); \
+        size_t new_capacity = capacity * unit; \
+        arr = checked_grow_alloc ((void *) arr, &new_capacity); \
+        capacity = new_capacity / unit; \
       }
 
 // Error handling
@@ -262,7 +264,7 @@ is_simple_char (char c)
 void
 add_char (string *str, char c)
 {
-  CHECK_GROW(str->arr, str->size, str->capacity);
+  CHECK_GROW(str->arr, str->size, str->capacity, sizeof (char));
 
   if (!is_simple_char (c))
     {
@@ -279,10 +281,10 @@ next_word (token_array *tokens, string *word)
   if (word->size == 0) // For cases of multiple spaces in a row
     return;
 
-  CHECK_GROW(word->arr, word->size, word->capacity)
+  CHECK_GROW(word->arr, word->size, word->capacity, sizeof (char));
   word->arr[word->size] = 0;
 
-  CHECK_GROW(tokens->arr, tokens->size, tokens->capacity)
+  CHECK_GROW(tokens->arr, tokens->size + 1, tokens->capacity, sizeof (char*));
 
   tokens->arr[tokens->size] = word->arr;
   tokens->size++;
@@ -295,7 +297,7 @@ next_word (token_array *tokens, string *word)
 void
 end_word(string *word)
 {
-  CHECK_GROW(word->arr, word->size, word->capacity);
+  CHECK_GROW(word->arr, word->size, word->capacity, sizeof (char));
   word->arr[word->size] = 0;
 }
 
@@ -304,11 +306,11 @@ void
 add_tokens (token_array *tokens, command_stack *cmd_stack, 
                               string *input, string *output)
 {
-  CHECK_GROW(tokens->arr, tokens->size, tokens->capacity);
+  CHECK_GROW(tokens->arr, tokens->size, tokens->capacity, sizeof (char*));
 
   tokens->arr[tokens->size] = 0;
-
-  CHECK_GROW(cmd_stack->stack, cmd_stack->top, cmd_stack->capacity);
+  
+  CHECK_GROW(cmd_stack->stack, cmd_stack->top, cmd_stack->capacity, sizeof (command_t));
 
   command_t cmd = (command_t) checked_malloc (sizeof (struct command));
   cmd->type = SIMPLE_COMMAND;
@@ -321,7 +323,7 @@ add_tokens (token_array *tokens, command_stack *cmd_stack,
   // Reset Tokens and input and output
   tokens->size = 0;
   tokens->capacity = 8;
-  tokens->arr = (char **) checked_malloc (tokens->capacity * sizeof (char *));
+  tokens->arr = (char **) checked_malloc (8 * sizeof (char *));
 
   input->size = 0;
   input->capacity = 0;
@@ -363,7 +365,7 @@ pop_op_stack (operator_stack *op_stack, command_stack *cmd_stack)
 void add_op (enum command_type type, operator_stack *op_stack, 
                 command_stack *cmd_stack)
 {
-  CHECK_GROW(op_stack->stack, op_stack->top, op_stack->capacity);
+  CHECK_GROW(op_stack->stack, op_stack->top, op_stack->capacity, sizeof (enum command_type));
 
   // Add logic to pop operators off the stack of less than or equal precedence
   while (op_stack->top > 0 && op_precedence (type) <= 
@@ -1085,7 +1087,7 @@ subshell_state (enum State *state, command_stack *cmd_stack, size_t depth,
   while (in_subshell)
   {
     command_t cmd = parse_stream(s, depth + 1, &in_subshell);
-    CHECK_GROW(commands, size, capacity);
+    CHECK_GROW(commands, size, capacity, sizeof (command_t *));
     commands[size] = cmd;
     size++;
   }
@@ -1124,7 +1126,7 @@ subshell_state (enum State *state, command_stack *cmd_stack, size_t depth,
   free (commands);
 
   // Add subshell command to command stack
-  CHECK_GROW (cmd_stack->stack, cmd_stack->top, cmd_stack->capacity);
+  CHECK_GROW (cmd_stack->stack, cmd_stack->top, cmd_stack->capacity, sizeof (command_t));
   cmd_stack->stack[cmd_stack->top] = subshell_cmd;
   cmd_stack->top++;
 
@@ -1616,7 +1618,7 @@ parse_stream(command_stream_t s, size_t depth, bool *in_subshell)
   token_array tokens;
   tokens.size = 0;
   tokens.capacity = 8;
-  tokens.arr = (char **) checked_malloc (tokens.capacity * sizeof (char *));
+  tokens.arr = (char **) checked_malloc (8 * sizeof (char *));
 
   string word;
   word.size = 0;

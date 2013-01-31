@@ -23,7 +23,7 @@ echo hello world && echo --badbadbad || echo nothing to it
 echo 7
 (echo hello world && echo fail) > test.tmp
 echo 8
-(echo hello world && echo fail) < test.tmp | cat ./test.tmp
+(echo hello || cat test.tmp) | cat test.tmp && echo done || echo FAILURE
 echo 9
 (echo hello world | tr eo oe) | (cat - | cut -b 1-4 && echo finished)
 echo 10
@@ -40,6 +40,8 @@ echo 15
 cat < test2.tmp | (cat - | grep is | (echo hello)) | tr aeiou -----
 echo 16
 (echo this is good; cat --notagain) || echo subshell has not succeeded in his mission
+echo 17
+
 EOF
 
 bash test.sh > test.exp 2>test.experr

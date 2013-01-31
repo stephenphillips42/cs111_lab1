@@ -3,6 +3,7 @@ Authors:
 Andy Huang       - UCLA ID: 503885009
 Stephen Phillips - UCLA ID: 503888079
 
+From Part 1A:
 We don't have anything for special characters (e.g. \t, \n, etc.). We also 
 consider apostrophes, quotations, grave accents as errors too. We do implement 
 everything needed for test-p-ok.sh and gives appropriate errors and error 
@@ -10,46 +11,13 @@ messages including line numbers. There is some dummy code to allow the
 makefile compilation to work (gets rid of "argument not used" errors). The 
 code does not change anything in the read-command.c file.
 
+For Part 1B:
+We have added the code to execute commands in the shell. Now it only does it 
+sequentially, and the parallelization will be added in later. It passes all 
+the test cases we give it, and returns the output as bash does. It waits for 
+all the child processes spawned in it to close before returning.
 
-Thoughts:
-So, we need to schedule the commands to execute in the most optimal order. Alright we don't want to spend so much time scheduling that we lose the advantage of parallization. BUT if we can figure out a fast algorithm to schedule all the processes, that will hugely improve performance (which is what we are being graded on). So we need to find something that makes things optimal and is fast enough (isn't optimal scheduling NP-Complete? We couldn't do it...). 
-Ideas:
-We probably need what the TA said, a dependency graph in the form of a 2D matrix (so wasteful but much faster). Ideally we could make for something like this:
-a > file; b < file; c < file; d > file
-a graph that looks like this:
-    a
-   /|\
-  b | c
-   \|/
-    d
-which in a 2D matrix would look like (rows mean what you depend on):
-  a  b  c  d
-a 0  0  0  0
-b 1  0  0  0
-c 1  0  0  0
-d 1  1  1  0
-
-How could we convert that into a scheduling algorithm? My idea was to to basically find a way to sort them into tiers. So an array of linked lists:
------------------
-|   |   |   |   |
---|---|---|---|--
-  v   v   v   -
-  a   b   d
-  |   |   |
-  -   v   -
-      c
-      |
-      -
-
-So we execute each command as a separate process. We start all the commands on the first linked list. Then each process executes all its commands then exits. In the parent process, we gather all the return statuses and when we have everthing, we go to the next linked list and keep going until we hit null. Simple no? And this would get everything executing fast. BUT... how do we make the linked list? Have to think about that... 
-
-I mean it seems as simple using the advantage of the heirarchy of the graph. But that's harder to find on the 2D array. Maybe we can make it so that we first find everything that has no dependencies and put that into one tier, then find everything that has only dependencies on the first tier and put that into another tier... which would make it like O(N^2) where N is the number of nodes. Great. Hash tables would reduce it down to O(n) which is nice... execept I can't do a stinking hash table on my own. AND Also, finding a dependency takes O(F*log(F)) time where F is the average number of files. So that makes the time O(N^2*F*log(F)). That awful. HASH TABLES - WHY CAN'T ACCESS YOU??????? Ugh...
-
-Anyways. Another way would be instead of to make the linked list, you check the 2D matrix directly. This is what the TA suggested I think. This would mean that when a task is done, you remove all dependencies on it and check which commands need to be run. Problem with this: Redundant checking. We need a way to skip the ones that have already been done (since they would be thought of as having no dependencies, being done). Also this is still an O(N^2) algorithm, since we have to check every row... so this isn't so hot either.
-
-So I looked online, and there wasn't much help. A lot of algorithms are out there for distributed computing, but most of it is far too complicated for us. The only thing I could find is topological sort, which might be useful. (Still O(N^2) since each swap has O(N) complexity). I can't find anything faster than O(N^2). Drat.
-
-By the way, so for dependencies we do have to be concerned with every word in each simple command, so that isn't a big deal, it won't change much of our file tree data structure. Still it adds more on dependency. ALSO, I might change how the pipe is run a little, the way Eggert talked about it in class with the grand child process. That might make things easier in our code.
-
-That is my thoughts on the scheduling. I hope to improve it soon, but I would love suggestions.
-
+Note that there is one race condition in our shell. If you have pipe with one 
+side being a subshell that uses a file that the other side uses directly for 
+its output, there will be a race condition, that will sometimes work and 
+sometimes not.
