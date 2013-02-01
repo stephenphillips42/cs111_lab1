@@ -45,33 +45,17 @@ insert_file_tree (file_tree *head, char *filename, char written_to)
     }
 }
 
-int
-get_file_desc (file_tree head, char *filename)
-{
-  if (head == 0)
-    return 0;
-
-  int cmp = strcmp (filename, head->filename);
-  if (cmp < 0)
-    return get_file_desc (head->left, filename);
-  else if (cmp > 0)
-    return get_file_desc (head->right, filename);
-  else 
-    return head->fd;
-}
-
 void
-free_file_tree (file_tree *head)
+free_file_tree (file_tree head)
 {
-  if(*head == 0)
+  if(head == 0)
     return;
 
-  if ((*head)->count > 0)
-    close ((*head)->fd);
+  // The words are freed by the commands, so we don't free them here
 
-  free_file_tree (&(*head)->left);
-  free_file_tree (&(*head)->right);
-  free(*head);
+  free_file_tree (head->left);
+  free_file_tree (head->right);
+  free(head);
 }
 
 void
@@ -83,8 +67,8 @@ print_indented_file_tree (int indent, file_tree head)
       printf("%*s/", indent + 2, "");
     }
 
-  printf (" \n%*s%s, fd: %d, wrtn: %d, cnt: %d\n", indent, "", 
-    head->filename, head->fd, head->written_to, head->count);
+  printf (" \n%*s%s, wrtn: %d, cnt: %d\n", indent, "", 
+    head->filename, head->written_to, head->count);
   
   if(head->right)
     {
