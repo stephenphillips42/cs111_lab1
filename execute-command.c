@@ -100,13 +100,71 @@ exit_with_status(int status)
 }
 void execute_commands_helper (command_t, int, int, node_t, node_t);
 
+// WARNING - This function never returns
+void
+execute_simple_child (command_t c, int input_fd, int output_fd, node_t close_list)
+{
+  node_t n;
+
+  // If the input is redirected to a file, reset stdin to that file
+  if (c->input)
+    {
+      int fd = open (c->input, O_RDONLY);
+      if(fd < 0)
+        {
+          for(n = close_list->next; n != close_list; n = n->next)
+            close(n->val);
+          perror("Cannot open file");
+          exit (1);
+        }
+      dup2(fd, STDIN_FILENO);
+      if (input_fd != STDIN_FILENO)
+        insert_node (close_list, input_fd);
+    }
+  else // Otherwise use the passed in input file descriptor
+    {
+      // replace standard input with input part of pipe
+      dup2(input_fd, STDIN_FILENO);
+    }
+
+  // If the output is redirected to a file, reset stdout to that file
+  if (c->output)
+    {
+      int fd = open (c->output, O_CREAT | O_TRUNC | O_WRONLY, 
+        S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
+      if(fd < 0)
+        {
+          for(n = close_list->next; n != close_list; n = n->next)
+            close(n->val);
+          perror("Cannot open file");
+          exit (1);
+        }
+      if (output_fd != STDOUT_FILENO)
+        insert_node (close_list, output_fd);
+      dup2(fd, STDOUT_FILENO);
+    }
+  else // Otherwise use the passed in output file descriptor
+    {
+      // replace standard output with output part of pipe
+      dup2(output_fd, STDOUT_FILENO);
+    }
+
+  // Close neccessary files
+  for(n = close_list->next; n != close_list; n = n->next)
+    close(n->val);
+  
+  // execute command
+  execvp(c->u.word[0], c->u.word);
+  perror("Error: ");
+  exit (120);
+}
+
 // How will we actually do this?
 int
 execute_simple (command_t c, int input_fd, int output_fd, node_t close_list) 
 {
   int pid;
-  node_t n;
-  
+    
   if (strcmp(c->u.word[0], "exec") == 0)
     {
       pid = 0;
@@ -122,125 +180,82 @@ execute_simple (command_t c, int input_fd, int output_fd, node_t close_list)
 
   if (pid == 0) // in child
   {
-    // If the input is redirected to a file, reset stdin to that file
-    if (c->input)
-      {
-        int fd = open (c->input, O_RDONLY);
-        if(fd < 0)
-          {
-            for(n = close_list->next; n != close_list; n = n->next)
-              close(n->val);
-            perror("Cannot open file");
-            exit (1);
-          }
-        dup2(fd, STDIN_FILENO);
-        if (input_fd != STDIN_FILENO)
-          insert_node (close_list, input_fd);
-      }
-    else // Otherwise use the passed in input file descriptor
-      {
-        // replace standard input with input part of pipe
-        dup2(input_fd, STDIN_FILENO);
-      }
-
-    // If the output is redirected to a file, reset stdout to that file
-    if (c->output)
-      {
-        int fd = open (c->output, O_CREAT | O_TRUNC | O_WRONLY, 
-          S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
-        if(fd < 0)
-          {
-            for(n = close_list->next; n != close_list; n = n->next)
-              close(n->val);
-            perror("Cannot open file");
-            exit (1);
-          }
-        if (output_fd != STDOUT_FILENO)
-          insert_node (close_list, output_fd);
-        dup2(fd, STDOUT_FILENO);
-      }
-    else // Otherwise use the passed in output file descriptor
-      {
-        // replace standard output with output part of pipe
-        dup2(output_fd, STDOUT_FILENO);
-      }
-
-    // Close neccessary files
-    for(n = close_list->next; n != close_list; n = n->next)
-      close(n->val);
-    
-    // execute command
-    execvp(c->u.word[0], c->u.word);
-    perror("Error: ");
-    exit (120);
+    execute_simple_child (c, input_fd, output_fd, close_list);
   }
 
   return pid;
 }
 
+// WARNING - This function never returns
+void
+execute_subshell_child (command_t c, int input_fd, int output_fd, node_t close_list, node_t pid_list)
+{
+  int status;
+  node_t n;
+  // If the input is redirected to a file, reset stdout to that file
+  if (c->input)
+    {
+      int fd = open (c->input, O_RDONLY);
+      if(fd < 0)
+        {
+          for (n = close_list->next; n != close_list; n = n->next)
+              close (n->val);
+
+          perror("Cannot open file");
+          exit(1);
+        }
+      
+      dup2(fd, STDIN_FILENO);
+      
+      input_fd = fd;
+
+    }
+  // If the output is redirected to a file, reset stdout to that file
+  if (c->output)
+    {
+      int fd = open (c->output, O_CREAT | O_TRUNC | O_WRONLY, 
+        S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
+      if(fd < 0) 
+        {
+          for (n = close_list->next; n != close_list; n = n->next)
+              close (n->val);
+
+          perror("Cannot open file");
+          exit(1);
+        }
+      
+      dup2(fd, STDOUT_FILENO);
+
+      output_fd = fd;
+    }
+
+  // Don't want to wait on parent processes
+  while (pid_list != pid_list->next)
+    remove_last_element (pid_list);
+
+  // TODO: Need to parallelize this
+  execute_commands_helper (c->u.subshell_command, input_fd, output_fd, close_list, pid_list);
+
+  for (n = close_list->next; n != close_list; n = n->next)
+    close (n->val);
+
+  // Wait for child processes
+  for(n = pid_list->next; n != pid_list; n = n->next)
+      waitpid(n->val, &status, 0);
+
+  exit(!!status);
+}
+
 int
 execute_subshell_command (command_t c, int input_fd, int output_fd, node_t close_list, node_t pid_list)
 {
-  int pid, status;
-  node_t n;
+  int pid;
   
   pid = fork();
 
   if (pid == 0) // In child
   {
-    // If the input is redirected to a file, reset stdout to that file
-    if (c->input)
-      {
-        int fd = open (c->input, O_RDONLY);
-        if(fd < 0)
-          {
-            for (n = close_list->next; n != close_list; n = n->next)
-                close (n->val);
-
-            perror("Cannot open file");
-            exit(1);
-          }
-        
-        dup2(fd, STDIN_FILENO);
-        
-        input_fd = fd;
-
-      }
-    // If the output is redirected to a file, reset stdout to that file
-    if (c->output)
-      {
-        int fd = open (c->output, O_CREAT | O_TRUNC | O_WRONLY, 
-          S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
-        if(fd < 0) 
-          {
-            for (n = close_list->next; n != close_list; n = n->next)
-                close (n->val);
-
-            perror("Cannot open file");
-            exit(1);
-          }
-        
-        dup2(fd, STDOUT_FILENO);
-    
-        output_fd = fd;
-      }
-
-    // Don't want to wait on parent processes
-    while (pid_list != pid_list->next)
-      remove_last_element (pid_list);
-
-    // TODO: Need to parallelize this
-    execute_commands_helper (c->u.subshell_command, input_fd, output_fd, close_list, pid_list);
-
-    for (n = close_list->next; n != close_list; n = n->next)
-      close (n->val);
-
-    // Wait for child processes
-    for(n = pid_list->next; n != pid_list; n = n->next)
-        waitpid(n->val, &status, 0);
-
- 
-    exit(!!status);
+    execute_subshell_child (c, input_fd, output_fd, close_list, pid_list);
   }
 
   return pid;

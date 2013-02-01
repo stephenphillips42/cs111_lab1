@@ -50,9 +50,7 @@ bash test.sh > test.exp 2>test.experr
 
 diff -u test.exp test.out || exit
 diff -u test.experr test.err || exit
-
-) || echo LAST ALMOST WHY && exit
-
+) || exit
 rm -fr "$tmp"
 
 
