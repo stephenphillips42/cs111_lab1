@@ -51,21 +51,32 @@ main (int argc, char **argv)
   command_stream_t command_stream =
     make_command_stream (get_next_byte, script_stream);
 
-  command_t last_command = NULL;
   command_t command;
-  while ((command = read_command_stream (command_stream)))
+  bool test;
+
+  if (print_tree)
     {
-      if (print_tree)
-	{
-	  printf ("# %d\n", command_number++);
-	  print_command (command);
-	}
-      else
-	{
-	  last_command = command;
-	  execute_command (command, time_travel);
-	}
+      while ((command = read_command_stream (command_stream)))
+        {
+          printf ("# %d\n", command_number++);
+          print_command (command);
+        }
+      return 0;
+    }
+  else if (time_travel)
+    {
+      printf("We need to do this...\n");
+      return 0;
+    }
+  else
+    {
+      while ((command = read_command_stream (command_stream)))
+        {
+          execute_command (command, time_travel);
+          test = command_status (command);
+          free_command (command);
+        }
+      return test;
     }
 
-  return print_tree || !last_command ? 0 : command_status (last_command);
 }
