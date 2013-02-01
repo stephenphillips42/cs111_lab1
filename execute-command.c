@@ -4,6 +4,7 @@
 #include "command-internals.h"
 #include "file_tree.h"
 #include "llist.h"
+#include "alloc.h"
 
 #include "string.h"
 #include <unistd.h>
@@ -18,11 +19,26 @@
 
 #define IN_HALF 0
 #define OUT_HALF 1
+#define CHECK_GROW(arr, size, capacity, unit) \
+    if (capacity <= size) \
+      { \
+        size_t new_capacity = capacity * unit; \
+        arr = checked_grow_alloc ((void *) arr, &new_capacity); \
+        capacity = new_capacity / unit; \
+      }
 
 // Debug
 
 /* FIXME: You may need to add #include directives, macro definitions,
    static function definitions, etc.  */
+
+typedef struct command_array_ {
+  command_t *array;
+  //file tree variable goes here
+  size_t size;
+  size_t capacity;
+  size_t ranking;
+} command_array;
 
 int
 command_status (command_t c)
@@ -411,6 +427,15 @@ get_files (command_t cmd, file_tree *head)
 }
 
 void
+add_command (command_array *cmd_arr, command_t cmd)
+{
+  CHECK_GROW(cmd_arr, cmd_arr->size, cmd_arr->capacity, sizeof(command_t));
+  
+  cmd_arr->array[cmd_arr->size] = cmd;
+  cmd_arr->ranking = 0;
+}
+
+void
 execute_command (command_t c, bool time_travel)
 {
   node_t n;
@@ -438,7 +463,14 @@ execute_command (command_t c, bool time_travel)
     }
 
   time_travel = false;
-  if (time_travel) { ; }
+  if (time_travel) 
+    { 
+      command_array cmd_arr;
+      cmd_arr.size = 0;
+      cmd_arr.capacity = 2;
+      cmd_arr.array = 
+          checked_malloc (cmd_arr.capacity * sizeof (command_t));
+    }
 
   c->status = status;
   //error (1, 0, "command execution not yet implemented");
