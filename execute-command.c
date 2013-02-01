@@ -31,30 +31,6 @@ command_status (command_t c)
 }
 
 void
-get_files (command_t cmd, file_tree *head)
-{
-  switch (cmd->type)
-    {
-      case AND_COMMAND:
-      case SEQUENCE_COMMAND:
-      case OR_COMMAND:
-      case PIPE_COMMAND:
-        get_files (cmd->u.command[0], head);
-        get_files (cmd->u.command[1], head);
-        break;
-      case SIMPLE_COMMAND:
-        if (cmd->input)
-          insert_file_tree (head, cmd->input, 0);
-        if (cmd->output)
-          insert_file_tree (head, cmd->output, 1);
-        break;
-      case SUBSHELL_COMMAND:
-        get_files (cmd->u.subshell_command, head);
-        break;
-    }
-}
-
-void
 print_list(node_t head)
 {
   node_t n;
@@ -374,6 +350,62 @@ execute_commands_helper (command_t c, int input_fd, int output_fd, node_t close_
         while (pid_list->next != pid_list)
           remove_last_element (pid_list);
         execute_commands_helper (c->u.command[1], input_fd, output_fd, close_list, pid_list);
+        break;
+    }
+}
+
+// Where to move these functions??
+void
+free_command (command_t cmd)
+{
+  switch (cmd->type)
+    {
+      case AND_COMMAND:
+      case SEQUENCE_COMMAND:
+      case OR_COMMAND:
+      case PIPE_COMMAND:
+        free_command (cmd->u.command[0]);
+        free_command (cmd->u.command[1]);
+        break;
+      case SIMPLE_COMMAND:
+        // The individual words will be freed by the file tree
+        free (cmd->u.word);
+        break;
+      case SUBSHELL_COMMAND:
+        free_command (cmd->u.subshell_command);
+        break;
+    }
+  free (cmd);
+}
+
+
+void
+get_files (command_t cmd, file_tree *head)
+{
+  char **word;
+  switch (cmd->type)
+    {
+      case AND_COMMAND:
+      case SEQUENCE_COMMAND:
+      case OR_COMMAND:
+      case PIPE_COMMAND:
+        get_files (cmd->u.command[0], head);
+        get_files (cmd->u.command[1], head);
+        break;
+      case SIMPLE_COMMAND:
+        if (cmd->input)
+          insert_file_tree (head, cmd->input, 0);
+        if (cmd->output)
+          insert_file_tree (head, cmd->output, 1);
+        word = cmd->u.word;
+        while (*word)
+          {
+            insert_file_tree (head, *word, 0);
+            word++;
+          }
+        break;
+      case SUBSHELL_COMMAND:
+        get_files (cmd->u.subshell_command, head);
         break;
     }
 }
