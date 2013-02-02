@@ -13,6 +13,8 @@
 static char const *program_name;
 static char const *script_name;
 
+bool g_time_travel;
+
 static void
 usage (void)
 {
@@ -31,13 +33,14 @@ main (int argc, char **argv)
   int command_number = 1;
   bool print_tree = false;
   bool time_travel = false;
+  g_time_travel = false;
   program_name = argv[0];
 
   for (;;)
     switch (getopt (argc, argv, "pt"))
       {
       case 'p': print_tree = true; break;
-      case 't': time_travel = true; break;
+      case 't': time_travel = true; g_time_travel = true; break;
       default: usage (); break;
       case -1: goto options_exhausted;
       }

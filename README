@@ -30,3 +30,5 @@ their rank. The we execute the commands of the same rank at the same time,
 spawning off child processes to execute each command. We wait for all in one 
 rank to finish, then go to the next rank until we are finished.
 
+We also added parallelization to the subshells. We take all the sequence 
+commands and check their parallelizability just like in the normal shell.

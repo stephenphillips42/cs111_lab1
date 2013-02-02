@@ -1,6 +1,7 @@
 #ifndef PARALLEL_COMMAND_HEADER
 #define PARALLEL_COMMAND_HEADER
 
+#include <sys/types.h>
 #include "command.h"
 #include "file_tree.h"
 

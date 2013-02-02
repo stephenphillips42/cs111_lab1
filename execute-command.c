@@ -1,11 +1,4 @@
 // UCLA CS 111 Lab 1 command execution
-
-#include "command.h"
-#include "command-internals.h"
-#include "file_tree.h"
-#include "llist.h"
-
-#include "string.h"
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -15,9 +8,19 @@
 #include <fcntl.h>
 #include <error.h>
 #include <stdio.h>
+#include <string.h>
+
+#include "command.h"
+#include "command-internals.h"
+#include "file_tree.h"
+#include "llist.h"
+#include "parallel.h"
+#include "alloc.h"
 
 #define IN_HALF 0
 #define OUT_HALF 1
+
+extern bool g_time_travel;
 
 // Debug
 
@@ -209,7 +212,61 @@ execute_subshell_child (command_t c, int input_fd, int output_fd, node_t close_l
   while (pid_list != pid_list->next)
     remove_last_element (pid_list);
 
-  // TODO: Need to parallelize this
+  // Check global state
+  if (g_time_travel && c->u.subshell_command->type == SEQUENCE_COMMAND)
+    {
+      size_t i;
+      int status;
+
+      size_t cmds_size = 0;
+      size_t cmds_capacity = 2;
+      command_t *cmds = checked_malloc (cmds_capacity * sizeof (command_t));
+      
+      cmds[cmds_size] = c->u.subshell_command;
+      cmds_size++;
+
+      while (cmds[0]->type == SEQUENCE_COMMAND)
+        {
+          if (cmds_capacity <= cmds_size)
+            {
+              size_t new_capacity = cmds_capacity * sizeof (command_t);
+              cmds = checked_grow_alloc ((void *) cmds, &new_capacity);
+              cmds_capacity = new_capacity / sizeof (command_t);
+            }
+          // Append the right side of sequence command to the end of this list
+          // Shift everything over one position to prepend an item to the list
+          for (i = cmds_size; i != 0; i--)
+            {
+              cmds[i] = cmds[i-1];
+            }
+
+          // Get the left and right child of the last sequence command expanded
+          command_t last_seq = cmds[1];
+          cmds[0] = last_seq->u.command[0];
+          cmds[1] = last_seq->u.command[1];
+        }
+
+      size_t arr_size = 0;
+      size_t arr_capacity = cmds_capacity;
+      command_array *cmd_arr = checked_malloc (arr_capacity * sizeof (command_array));
+
+      for (i = 0; i < cmds_size; i++)
+        {
+          add_command_t (cmds[i], &cmd_arr, &arr_size, &arr_capacity);
+        }
+      
+      status = excute_parallel (cmd_arr, arr_size);
+      // Free all the commands
+      for (i = 0; i < arr_size; i++)
+        {
+          free_command_array_dependents (cmd_arr[i]);
+        }
+      free (cmd_arr);
+
+      // Done with all execution. Exit with the last status
+      exit (status);
+    }
+  // Not in time travel state
   execute_commands_helper (c->u.subshell_command, input_fd, output_fd, close_list, pid_list);
 
   for (n = close_list->next; n != close_list; n = n->next)

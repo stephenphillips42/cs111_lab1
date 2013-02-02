@@ -7,7 +7,6 @@ mkdir "$tmp" || exit
 cd "$tmp" || exit
 
 cat > test.sh <<'EOF'
-(
 #1
 echo hello #0
 #2
@@ -24,7 +23,6 @@ cat < file ; cat < file #1
 echo nothing > file #2
 #8
 (echo hi || (echo hello && echo good bye ; (echo nothing))) #0
-)
 
 EOF
 
