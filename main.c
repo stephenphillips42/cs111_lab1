@@ -18,6 +18,8 @@ typedef struct command_array_{
   command_t command_tree;
   file_tree files;
   size_t ranking;
+  // TEMPORARY!!
+  size_t index;
 } command_array;
 
 static void
@@ -64,10 +66,31 @@ get_files (command_t cmd, file_tree *head)
 }
 
 bool
+files_dependent (file_tree files1, file_tree files2)
+{
+  if (!files1 || !files2)
+    return false; // Can't search null values
+
+  if (!files_dependent (files1->left, files2) &&
+        !files_dependent (files1->right, files2))
+    {
+      file_tree search = find_file (files2, files1->filename);
+      // Return false if we didn't find anything
+      if (search == 0)
+        return false;
+      else // Otherwise we check if one of them is being written to
+        return (files1->written_to || files2->written_to);
+    }
+  else
+    return true;
+}
+
+bool
 dependent_commands_arrs (command_array cmd_arr1, command_array cmd_arr2)
 {
-  (void) cmd_arr1, (void) cmd_arr2;
-  return true;
+  //(void) cmd_arr1, (void) cmd_arr2;
+
+  return files_dependent (cmd_arr1.files, cmd_arr2.files);
 }
 
 // Finds ranking of cmd in cmd_arr. Assumes cmd_arr is non-zero sized
@@ -101,33 +124,45 @@ void
 place_command_by_ranking (command_array *cmd_info, command_array **cmd_arr, 
                           size_t arr_size)
 {
-  int i;
+  int i, j;
 
   // Shift everything to match ranking
   // This is definitely not the most efficient sort. However, if we don't place
   //  commands into their proper position, we could get less optimal scheduling
 
+  printf("Rank of this one: %d\n", cmd_info->ranking);
   i = (int)(arr_size);
   while (0 < i && cmd_info->ranking < (*cmd_arr)[i-1].ranking)
   {
     (*cmd_arr)[i] = (*cmd_arr)[i-1];
+    for (j = 0; j != (int)arr_size; j++) {
+      printf ("%d -- cmd: %x, files: %x, rank: %d\n",
+        j, 
+        (unsigned int)(*cmd_arr)[j].command_tree, 
+        (unsigned int)(*cmd_arr)[j].files,
+        (*cmd_arr)[j].ranking);
+      print_command ((*cmd_arr)[j].command_tree);
+    }
+    printf("ENDED\n\n\n\n");
     i--;
   }
   // initialize the values of the command
   (*cmd_arr)[i] = *cmd_info;
 
+    for (j = 0; j != (int)arr_size+1; j++) {
+      printf ("%d -- cmd: %x, files: %x, rank: %d\n",
+        j, 
+        (unsigned int)(*cmd_arr)[j].command_tree, 
+        (unsigned int)(*cmd_arr)[j].files,
+        (*cmd_arr)[j].ranking);
+      print_command ((*cmd_arr)[j].command_tree);
+    }
+    printf("FINAL ENDED\n\n\n\n");
   #ifdef DEBUG
-  for (i = 0; i != (int)arr_size+1; i++) {
-    printf ("%d -- cmd: %x, files: %x, rank: %d\n",
-      i, 
-      (unsigned int)(*cmd_arr)[i].command_tree, 
-      (unsigned int)(*cmd_arr)[i].files,
-      (*cmd_arr)[i].ranking);
-    print_command ((*cmd_arr)[i].command_tree);
-  }
   #endif
 }
 
+int random_global = 1;
 void
 add_command_t (command_t cmd, command_array **cmd_arr,  
           size_t *arr_size, size_t *arr_capacity)
@@ -135,7 +170,7 @@ add_command_t (command_t cmd, command_array **cmd_arr,
   command_array cmd_info;
 
   cmd_info.command_tree = cmd;
-
+  cmd_info.index = random_global++;
 
   // Make the File Tree
   file_tree head = 0;
@@ -222,7 +257,7 @@ main (int argc, char **argv)
         }
       for (i = 0; i < arr_size; i++)
         {
-          printf ("# %d\n", command_number++);
+          printf ("# Index: %d, Rank: %d\n", cmd_arr[i].index, cmd_arr[i].ranking);
           print_command (cmd_arr[i].command_tree);
           //print_file_tree (cmd_arr[i].files);
           free_command (cmd_arr[i].command_tree);

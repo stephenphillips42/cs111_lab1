@@ -84,3 +84,16 @@ print_file_tree(file_tree head)
     print_indented_file_tree (0, head);
 }
 
+file_tree find_file (file_tree head, char const *filename)
+{
+  if (!head)
+    return 0; // Have not found it, return 0
+
+  int cmp = strcmp(head->filename, filename);
+  if (cmp < 0)
+    return find_file (head->left, filename);
+  else if (0 < cmp)
+    return find_file (head->right, filename);
+  else // found the node
+    return head;
+}

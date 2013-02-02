@@ -16,6 +16,7 @@ typedef struct file_tree_struct* file_tree;
 file_tree create_file_tree (char*, char);
 int insert_file_tree (file_tree*, char*, char);
 void free_file_tree (file_tree);
-void print_file_tree(file_tree);
+void print_file_tree (file_tree);
+file_tree find_file (file_tree, char const*);
 
 #endif
