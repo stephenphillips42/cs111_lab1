@@ -29,4 +29,4 @@ int command_status (command_t);
 void free_command (command_t);
 
 // For time travel
-void schedule_and_execute_commands(command_t *);
+void schedule_and_execute_commands (command_t *);

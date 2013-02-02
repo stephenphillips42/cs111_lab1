@@ -31,47 +31,47 @@ command_status (command_t c)
 }
 
 void
-print_list(node_t head)
+print_list (node_t head)
 {
   node_t n;
   for (n = head->next; n != head; n = n->next)
-    printf("Node: %d\n", n->val);
-  printf("Node: %d\n", n->val);
+    printf ("Node: %d\n", n->val);
+  printf ("Node: %d\n", n->val);
 }
 
 void
-print_cmdtype(command_t c)
+print_cmdtype (command_t c)
 {
   switch (c->type)
   {
     case AND_COMMAND:
-      printf("AND_COMMAND\n");
+      printf ("AND_COMMAND\n");
       break;         
     case SEQUENCE_COMMAND:
-      printf("SEQUENCE_COMMAND\n");
+      printf ("SEQUENCE_COMMAND\n");
       break;    
     case OR_COMMAND:
-      printf("OR_COMMAND\n");
+      printf ("OR_COMMAND\n");
       break;          
     case PIPE_COMMAND:
-      printf("PIPE_COMMAND\n");
+      printf ("PIPE_COMMAND\n");
       break;        
     case SIMPLE_COMMAND:
-      printf("SIMPLE_COMMAND %s\n", c->u.word[0]);
+      printf ("SIMPLE_COMMAND %s\n", c->u.word[0]);
       break;      
     case SUBSHELL_COMMAND:
-      printf("SUBSHELL_COMMAND\n");
+      printf ("SUBSHELL_COMMAND\n");
       break;    
     default:
-      printf("Unknown\n");
+      printf ("Unknown\n");
   }
 }
 
 void
-exit_with_status(int status)
+exit_with_status (int status)
 {
   // FOR DEBUGGING
-  printf("ERROR %d  %s\n", status, strerror (status));
+  printf ("ERROR %d  %s\n", status, strerror (status));
   exit (status);
 }
 void execute_commands_helper (command_t, int, int, node_t, node_t);
@@ -86,21 +86,21 @@ execute_simple_child (command_t c, int input_fd, int output_fd, node_t close_lis
   if (c->input)
     {
       int fd = open (c->input, O_RDONLY);
-      if(fd < 0)
+      if (fd < 0)
         {
-          for(n = close_list->next; n != close_list; n = n->next)
-            close(n->val);
-          perror("Cannot open file");
+          for (n = close_list->next; n != close_list; n = n->next)
+            close (n->val);
+          perror ("Cannot open file");
           exit (1);
         }
-      dup2(fd, STDIN_FILENO);
+      dup2 (fd, STDIN_FILENO);
       if (input_fd != STDIN_FILENO)
         insert_node (close_list, input_fd);
     }
   else // Otherwise use the passed in input file descriptor
     {
       // replace standard input with input part of pipe
-      dup2(input_fd, STDIN_FILENO);
+      dup2 (input_fd, STDIN_FILENO);
     }
 
   // If the output is redirected to a file, reset stdout to that file
@@ -108,30 +108,30 @@ execute_simple_child (command_t c, int input_fd, int output_fd, node_t close_lis
     {
       int fd = open (c->output, O_CREAT | O_TRUNC | O_WRONLY, 
         S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
-      if(fd < 0)
+      if (fd < 0)
         {
-          for(n = close_list->next; n != close_list; n = n->next)
-            close(n->val);
-          perror("Cannot open file");
+          for (n = close_list->next; n != close_list; n = n->next)
+            close (n->val);
+          perror ("Cannot open file");
           exit (1);
         }
       if (output_fd != STDOUT_FILENO)
         insert_node (close_list, output_fd);
-      dup2(fd, STDOUT_FILENO);
+      dup2 (fd, STDOUT_FILENO);
     }
   else // Otherwise use the passed in output file descriptor
     {
       // replace standard output with output part of pipe
-      dup2(output_fd, STDOUT_FILENO);
+      dup2 (output_fd, STDOUT_FILENO);
     }
 
   // Close neccessary files
-  for(n = close_list->next; n != close_list; n = n->next)
-    close(n->val);
+  for (n = close_list->next; n != close_list; n = n->next)
+    close (n->val);
   
   // execute command
-  execvp(c->u.word[0], c->u.word);
-  perror("Error: ");
+  execvp (c->u.word[0], c->u.word);
+  perror ("Error: ");
   exit (120);
 }
 
@@ -141,7 +141,7 @@ execute_simple (command_t c, int input_fd, int output_fd, node_t close_list)
 {
   int pid;
     
-  if (strcmp(c->u.word[0], "exec") == 0)
+  if (strcmp (c->u.word[0], "exec") == 0)
     {
       pid = 0;
       // get rid of "exec" in front
@@ -151,7 +151,7 @@ execute_simple (command_t c, int input_fd, int output_fd, node_t close_list)
     }
   else
     {
-      pid = fork();
+      pid = fork ();
     }
 
   if (pid == 0) // in child
@@ -172,16 +172,16 @@ execute_subshell_child (command_t c, int input_fd, int output_fd, node_t close_l
   if (c->input)
     {
       int fd = open (c->input, O_RDONLY);
-      if(fd < 0)
+      if (fd < 0)
         {
           for (n = close_list->next; n != close_list; n = n->next)
               close (n->val);
 
-          perror("Cannot open file");
-          exit(1);
+          perror ("Cannot open file");
+          exit (1);
         }
       
-      dup2(fd, STDIN_FILENO);
+      dup2 (fd, STDIN_FILENO);
       
       input_fd = fd;
 
@@ -191,16 +191,16 @@ execute_subshell_child (command_t c, int input_fd, int output_fd, node_t close_l
     {
       int fd = open (c->output, O_CREAT | O_TRUNC | O_WRONLY, 
         S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
-      if(fd < 0) 
+      if (fd < 0) 
         {
           for (n = close_list->next; n != close_list; n = n->next)
               close (n->val);
 
-          perror("Cannot open file");
-          exit(1);
+          perror ("Cannot open file");
+          exit (1);
         }
       
-      dup2(fd, STDOUT_FILENO);
+      dup2 (fd, STDOUT_FILENO);
 
       output_fd = fd;
     }
@@ -216,10 +216,10 @@ execute_subshell_child (command_t c, int input_fd, int output_fd, node_t close_l
     close (n->val);
 
   // Wait for child processes
-  for(n = pid_list->next; n != pid_list; n = n->next)
-      waitpid(n->val, &status, 0);
+  for (n = pid_list->next; n != pid_list; n = n->next)
+      waitpid (n->val, &status, 0);
 
-  exit(!!status);
+  exit (!!status);
 }
 
 int
@@ -227,7 +227,7 @@ execute_subshell_command (command_t c, int input_fd, int output_fd, node_t close
 {
   int pid;
   
-  pid = fork();
+  pid = fork ();
 
   if (pid == 0) // In child
   {
@@ -260,7 +260,7 @@ execute_commands_helper (command_t c, int input_fd, int output_fd, node_t close_
       case PIPE_COMMAND:
 
         // Set up pipe
-        pipe(pipefd);
+        pipe (pipefd);
         // Start the left side of the pipe
         // Need to close the input half of the pipe for the left side
         insert_node (close_list, pipefd[IN_HALF]);
@@ -276,8 +276,8 @@ execute_commands_helper (command_t c, int input_fd, int output_fd, node_t close_
         remove_last_element (close_list);
 
         // Close the pipe (not needed anymore)
-        close(pipefd[IN_HALF]);
-        close(pipefd[OUT_HALF]);
+        close (pipefd[IN_HALF]);
+        close (pipefd[OUT_HALF]);
         break;
 
       case SUBSHELL_COMMAND:
@@ -290,17 +290,17 @@ execute_commands_helper (command_t c, int input_fd, int output_fd, node_t close_
         execute_commands_helper (c->u.command[0], input_fd, output_fd, close_list, pid_list);
         
         // Close neccessary files
-        for(n = close_list->next; n != close_list; n = n->next)
-          close(n->val);
+        for (n = close_list->next; n != close_list; n = n->next)
+          close (n->val);
         
         // Wait for the left side to either exit or finish
         for (n = pid_list->next; n != pid_list; n = n->next)
           {
 
-            if(waitpid (n->val, &status, 0) < 0)
+            if (waitpid (n->val, &status, 0) < 0)
               {
-                perror("Error in process");
-                printf("Unexpected error in process %d", n->val);
+                perror ("Error in process");
+                printf ("Unexpected error in process %d", n->val);
               }
           }
         if (status) // If we get a bad signal in the last command
@@ -319,8 +319,8 @@ execute_commands_helper (command_t c, int input_fd, int output_fd, node_t close_
         execute_commands_helper (c->u.command[0], input_fd, output_fd, close_list, pid_list);
         
         // Close neccessary files
-        for(n = close_list->next; n != close_list; n = n->next)
-          close(n->val);
+        for (n = close_list->next; n != close_list; n = n->next)
+          close (n->val);
         while (close_list != close_list->next)
           remove_last_element (close_list);
         
@@ -419,14 +419,14 @@ execute_command (command_t c, bool time_travel)
      You can also use external functions defined in the GNU C Library.  */
 
   // Dummy heads for doubly-linked list for close files and pids
-  node_t close_list = initialize_llist();
-  node_t pid_list = initialize_llist();
+  node_t close_list = initialize_llist ();
+  node_t pid_list = initialize_llist ();
 
   execute_commands_helper (c, STDIN_FILENO, STDOUT_FILENO, close_list, pid_list);
 
   // Close all leftover open files
   for (n = close_list->next; n != close_list; n = n->next)
-    close(n->val);
+    close (n->val);
 
   // Wait on all of the processes that are still running
   int status = 0, pid_count = 0;

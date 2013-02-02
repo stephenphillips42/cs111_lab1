@@ -4,6 +4,7 @@
 #include <error.h>
 #include <getopt.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "alloc.h"
 #include "file_tree.h"
@@ -31,7 +32,7 @@ get_next_byte (void *stream)
   return getc (stream);
 }
 
-static void
+void
 get_files (command_t cmd, file_tree *head)
 {
   char **word;
@@ -62,29 +63,37 @@ get_files (command_t cmd, file_tree *head)
     }
 }
 
-static void
-add_command_t (command_t cmd, command_array *cmd_arr,  
+bool
+dependent_commands (command_array cmd_arr1, command_array cmd_arr2)
+{
+  return 1;
+}
+
+void
+add_command_t (command_t cmd, command_array **cmd_arr,  
           size_t *arr_size, size_t *arr_capacity)
 {
   // Check Size of the array, allocate more memory if needed
-  if(*arr_capacity <= *arr_size)
+  if (*arr_capacity <= *arr_size)
     {
-      size_t new_capacity = *arr_capacity * (sizeof(command_array));
-      cmd_arr = checked_grow_alloc (cmd_arr, &new_capacity);
-      *arr_capacity = new_capacity / (sizeof(command_array));
+      size_t new_capacity = (*arr_capacity) * (sizeof (command_array));
+      *cmd_arr = checked_grow_alloc (*cmd_arr, &new_capacity);
+      *arr_capacity = new_capacity / (sizeof (command_array));
     }
 
   // Initialize new command_array element's command tree
-  cmd_arr[*arr_size].command_tree = cmd;
+  (*cmd_arr)[*arr_size].command_tree = cmd;
 
   // Make the File Tree
-  file_tree *head;
-  get_files(cmd, head);
+  file_tree head = 0;
+  get_files (cmd, &head);
+  (*cmd_arr)[*arr_size].files = head;
+
 
   // TODO: Ranking Initialization
 
   // Change Array Size
-  *arr_size++;
+  (*arr_size)++;
 }
 
 int
@@ -120,7 +129,7 @@ main (int argc, char **argv)
   command_array *cmd_arr;
   size_t arr_size = 0;
   size_t arr_capacity = 2;
-  cmd_arr = checked_malloc(arr_capacity * sizeof(command_array));
+  cmd_arr = checked_malloc (arr_capacity * sizeof (command_array));
   bool test;
 
   if (print_tree)
@@ -134,9 +143,19 @@ main (int argc, char **argv)
     }
   else if (time_travel)
     {
+      size_t i;
+      cmd_arr = (command_array *) checked_malloc (arr_capacity * (sizeof (command_array)));
       while ((command = read_command_stream (command_stream)))
         {
-
+          add_command_t (command, &cmd_arr, &arr_size, &arr_capacity);
+        }
+      for (i = 0; i < arr_size; i++)
+        {
+          printf ("# %d\n", command_number++);
+          print_command (cmd_arr[i].command_tree);
+          print_file_tree (cmd_arr[i].files);
+          free_command (cmd_arr[i].command_tree);
+          free_file_tree (cmd_arr[i].files);
         }
       return 0;
     }
