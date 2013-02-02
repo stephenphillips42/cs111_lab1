@@ -5,10 +5,19 @@
 #include <getopt.h>
 #include <stdio.h>
 
+#include "alloc.h"
+#include "file_tree.h"
 #include "command.h"
+#include "command-internals.h"
 
 static char const *program_name;
 static char const *script_name;
+
+typedef struct command_array_{
+  command_t command_tree;
+  file_tree files;
+  size_t ranking;
+} command_array;
 
 static void
 usage (void)
@@ -20,6 +29,62 @@ static int
 get_next_byte (void *stream)
 {
   return getc (stream);
+}
+
+static void
+get_files (command_t cmd, file_tree *head)
+{
+  char **word;
+  switch (cmd->type)
+    {
+      case AND_COMMAND:
+      case SEQUENCE_COMMAND:
+      case OR_COMMAND:
+      case PIPE_COMMAND:
+        get_files (cmd->u.command[0], head);
+        get_files (cmd->u.command[1], head);
+        break;
+      case SIMPLE_COMMAND:
+        if (cmd->input)
+          insert_file_tree (head, cmd->input, 0);
+        if (cmd->output)
+          insert_file_tree (head, cmd->output, 1);
+        word = cmd->u.word;
+        while (*word)
+          {
+            insert_file_tree (head, *word, 0);
+            word++;
+          }
+        break;
+      case SUBSHELL_COMMAND:
+        get_files (cmd->u.subshell_command, head);
+        break;
+    }
+}
+
+static void
+add_command_t (command_t cmd, command_array *cmd_arr,  
+          size_t *arr_size, size_t *arr_capacity)
+{
+  // Check Size of the array, allocate more memory if needed
+  if(*arr_capacity <= *arr_size)
+    {
+      size_t new_capacity = *arr_capacity * (sizeof(command_array));
+      cmd_arr = checked_grow_alloc (cmd_arr, &new_capacity);
+      *arr_capacity = new_capacity / (sizeof(command_array));
+    }
+
+  // Initialize new command_array element's command tree
+  cmd_arr[*arr_size].command_tree = cmd;
+
+  // Make the File Tree
+  file_tree *head;
+  get_files(cmd, head);
+
+  // TODO: Ranking Initialization
+
+  // Change Array Size
+  *arr_size++;
 }
 
 int
@@ -52,6 +117,10 @@ main (int argc, char **argv)
     make_command_stream (get_next_byte, script_stream);
 
   command_t command;
+  command_array *cmd_arr;
+  size_t arr_size = 0;
+  size_t arr_capacity = 2;
+  cmd_arr = checked_malloc(arr_capacity * sizeof(command_array));
   bool test;
 
   if (print_tree)
@@ -65,7 +134,10 @@ main (int argc, char **argv)
     }
   else if (time_travel)
     {
-      printf("We need to do this...\n");
+      while ((command = read_command_stream (command_stream)))
+        {
+
+        }
       return 0;
     }
   else
