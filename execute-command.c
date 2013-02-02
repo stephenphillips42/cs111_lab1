@@ -378,38 +378,6 @@ free_command (command_t cmd)
   free (cmd);
 }
 
-
-void
-get_files (command_t cmd, file_tree *head)
-{
-  char **word;
-  switch (cmd->type)
-    {
-      case AND_COMMAND:
-      case SEQUENCE_COMMAND:
-      case OR_COMMAND:
-      case PIPE_COMMAND:
-        get_files (cmd->u.command[0], head);
-        get_files (cmd->u.command[1], head);
-        break;
-      case SIMPLE_COMMAND:
-        if (cmd->input)
-          insert_file_tree (head, cmd->input, 0);
-        if (cmd->output)
-          insert_file_tree (head, cmd->output, 1);
-        word = cmd->u.word;
-        while (*word)
-          {
-            insert_file_tree (head, *word, 0);
-            word++;
-          }
-        break;
-      case SUBSHELL_COMMAND:
-        get_files (cmd->u.subshell_command, head);
-        break;
-    }
-}
-
 void
 execute_command (command_t c, bool time_travel)
 {
