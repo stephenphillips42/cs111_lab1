@@ -1,4 +1,6 @@
 // UCLA CS 111 Lab 1 command interface
+#ifndef COMMAND_HEADER
+#define COMMAND_HEADER
 
 #include <stdbool.h>
 
@@ -27,3 +29,6 @@ int command_status (command_t);
 
 // Frees the memory of a command
 void free_command (command_t);
+
+#endif
+
