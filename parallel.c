@@ -4,6 +4,7 @@
 #include <stdlib.h>
 
 #include "command-internals.h"
+#include "command.h"
 #include "alloc.h"
 #include "parallel.h"
 #include "file_tree.h"

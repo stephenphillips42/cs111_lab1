@@ -244,6 +244,7 @@ execute_subshell_child (command_t c, int input_fd, int output_fd, node_t close_l
           command_t last_seq = cmds[1];
           cmds[0] = last_seq->u.command[0];
           cmds[1] = last_seq->u.command[1];
+          cmds_size++;
         }
 
       size_t arr_size = 0;
