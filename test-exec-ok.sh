@@ -7,7 +7,7 @@ mkdir "$tmp" || exit
 cd "$tmp" || exit
 
 cat > test.sh <<'EOF'
-echo hello
+echo hello ; echo world
 echo 1
 echo hello world i have ice cream | grep h
 echo 2

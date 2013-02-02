@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+
 // Use #define DEBUG if you want to print output
 
 /*
@@ -41,15 +42,13 @@ enum State
     AMPERSAND,                    // 14 - State just after an Ampersand (&)
     AND,                          // 15 - State just after an And (&&)
     COMMENT_AND,                  // 16 - Comment after an and
-    SEMI_COLON,                   // 17 - State just after a semicolon (;)
-    COMMENT_SEMI_COLON,           // 18 - Comment just after a semi-colon
-    SUBSHELL,                     // 19 - State while in parenthesis
-    AFTER_SUBSHELL,               // 20 - State right after a closed parenthesis
-    AFTER_SUBSHELL_INPUT,         // 21 - State after SUBSHELL input I/O redirection is complete
-    AFTER_SUBSHELL_OUTPUT,        // 22 - State after SUBSHELL output I/O redirection is complete
-    AFTER_AFTER_SUBSHELL_INPUT,   // 23 - State right after a closed parenthesis and an input I/O redirection
-    AFTER_AFTER_SUBSHELL_OUTPUT,  // 24 - State right after a closed parenthesis and an output I/O redirection
-    FINAL                         // 25 - Finish states
+    SUBSHELL,                     // 17 - State while in parenthesis
+    AFTER_SUBSHELL,               // 18 - State right after a closed parenthesis
+    AFTER_SUBSHELL_INPUT,         // 19 - State after SUBSHELL input I/O redirection is complete
+    AFTER_SUBSHELL_OUTPUT,        // 20 - State after SUBSHELL output I/O redirection is complete
+    AFTER_AFTER_SUBSHELL_INPUT,   // 21 - State right after a closed parenthesis and an input I/O redirection
+    AFTER_AFTER_SUBSHELL_OUTPUT,  // 22 - State right after a closed parenthesis and an output I/O redirection
+    FINAL                         // 23 - Finish states
   };
 
 void
@@ -125,37 +124,29 @@ print_state (enum State state)
       printf ("COMMENT_AND");
       // 16 - Comment after an and
       break;
-    case SEMI_COLON:
-      printf ("SEMI_COLON");
-      // 17 - State just after a semicolon (;)
-      break;
-    case COMMENT_SEMI_COLON:
-      printf ("COMMENT_SEMI_COLON");
-      // 18 - Comment just after a semi-colon
-      break;
     case SUBSHELL:
       printf ("SUBSHELL");
-      // 19 - State while in parenthesis
+      // 17 - State right after an open parenthesis
       break;
     case AFTER_SUBSHELL:
       printf ("AFTER_SUBSHELL");
-      // 20 - State right after a closed parenthesis
+      // 18 - State right after a closed parenthesis
       break;
     case AFTER_SUBSHELL_INPUT:
       printf ("AFTER_SUBSHELL_INPUT");
-      // 21 - State right after a closed parenthesis and an input I/O redirection
+      // 19 - State right after a closed parenthesis and an input I/O redirection
       break;
     case AFTER_SUBSHELL_OUTPUT:
       printf ("AFTER_SUBSHELL_OUTPUT");
-      // 22 - State right after a closed parenthesis and an output I/O redirection
+      // 20 - State right after a closed parenthesis and an output I/O redirection
       break;
     case AFTER_AFTER_SUBSHELL_INPUT:
       printf ("AFTER_AFTER_SUBSHELL_INPUT\n");
-      // 23 - State right after a closed parenthesis and an input I/O redirection
+      // 21 - State right after a closed parenthesis and an input I/O redirection
       break;
     case AFTER_AFTER_SUBSHELL_OUTPUT:
       printf ("AFTER_AFTER_SUBSHELL_OUTPUT\n");
-      // 24 - State right after a closed parenthesis and an output I/O redirection
+      // 22 - State right after a closed parenthesis and an output I/O redirection
       break;
 
     case FINAL:
@@ -390,18 +381,28 @@ finish_op_stack (operator_stack *op_stack, command_stack *cmd_stack)
 // State functions
 inline
 void
-start_state (char c, enum State *state, string *word)
+start_state (char c, enum State *state, string *word, 
+      size_t depth, bool *in_subshell)
 {
   switch (c)
     {
       case '|':
       case '&':
-      case ';':
-      case ')':
       case '>':
       case '<':
         //error (1, 0, "Invalid character at start");
         error_and_message ("Invalid character at start");
+        break;
+      case ')':
+        if(depth == 0)
+          {
+          error_and_message ("Unexpected close in parenthesis");
+          }
+        else
+          {
+            *in_subshell = false;
+            *state = FINAL;
+          }
         break;
       case '\n':
         g_newlines++;
@@ -453,7 +454,7 @@ normal_state (char c, enum State *state, token_array *tokens, string *word,
       case ';':
         next_word (tokens, word);
         add_tokens (tokens, cmd_stack, input, output);
-        *state = SEMI_COLON;
+        *state = FINAL;
         break;
       //case '\\':
       //  state = SPECIAL;
@@ -553,7 +554,7 @@ input_state (char c, enum State *state, token_array *tokens, string *input,
           }
         end_word (input);
         add_tokens (tokens, cmd_stack, input, output);
-        *state = SEMI_COLON;
+        *state = FINAL;
         break;
       case '<':
         error_and_message ("Cannot redirect multiple input");
@@ -649,7 +650,7 @@ after_input_state (char c, enum State *state, token_array *tokens,
         break;
       case ';':
         add_tokens (tokens, cmd_stack, input, output);
-        *state = SEMI_COLON;
+        *state = FINAL;
         break;
       case '<':
         error_and_message ("Cannot redirect multiple input");
@@ -731,7 +732,7 @@ output_state (char c, enum State *state, token_array *tokens, string *output,
           }      
         end_word (output);
         add_tokens (tokens, cmd_stack, input, output);
-        *state = SEMI_COLON;
+        *state = FINAL;
         break;
       case ')':
         if (depth == 0)
@@ -830,7 +831,7 @@ after_output_state (char c, enum State *state, token_array *tokens,
         break;
       case ';':
         add_tokens (tokens, cmd_stack, input, output);
-        *state = SEMI_COLON;
+        *state = FINAL;
         break;
       case '>':
         error_and_message ("Cannot redirect multiple output");
@@ -875,52 +876,6 @@ after_output_state (char c, enum State *state, token_array *tokens,
         break;
       default:
         error_and_message ("Cannot have multiple output files");
-        break;
-    }
-}
-
-inline
-void
-semi_colon_state (char c, enum State *state, string *word,
-                        command_stack *cmd_stack, operator_stack *op_stack, 
-                        size_t depth, bool *in_subshell)
-{
-  switch (c)
-    {
-      case '&':
-      case '|':
-      case ';':
-        error_and_message ("Incomplete semicolon");
-        break;
-      case '\n':
-        g_newlines++;
-        *state = FINAL;
-        break;
-      case ')':
-        if (depth == 0)
-          {
-            error_and_message ("Unexpected end of parenthesis");
-          }
-        else
-          {
-            *in_subshell = false;
-            *state = FINAL;
-          }
-        break;
-      case '#':
-        *state = COMMENT_SEMI_COLON;
-        break;
-      case ' ':
-      case '\t':
-        // Ignore whitespace in this state
-        break;
-      case '(':
-        *state = SUBSHELL;
-        break;
-      default:
-        add_op (SEQUENCE_COMMAND, op_stack, cmd_stack);
-        add_char (word, c);
-        *state = NORMAL;
         break;
     }
 }
@@ -1088,8 +1043,21 @@ subshell_state (enum State *state, command_stack *cmd_stack, size_t depth,
   {
     command_t cmd = parse_stream (s, depth + 1, &in_subshell);
     CHECK_GROW(commands, size, capacity, sizeof (command_t *));
-    commands[size] = cmd;
-    size++;
+    // Check if there are commands in the subshell
+    if(cmd != 0)
+      {
+        commands[size] = cmd;
+        size++;
+      } 
+    else
+      {
+        break;
+      }
+  }
+
+  if(size == 0)
+  {
+    error_and_message("No commands in subshell");
   }
 
   // Loop to string the sequence command together
@@ -1153,7 +1121,7 @@ after_subshell_state (char c, enum State *state, size_t depth, bool *in_subshell
         *state = AMPERSAND;
         break;
       case ';':
-        *state = SEMI_COLON;
+        *state = FINAL;
         break;
       case '>':
         *state = AFTER_SUBSHELL_OUTPUT;
@@ -1225,7 +1193,7 @@ after_subshell_input_state (char c, enum State *state, string *input,
         input->size = 0;
         input->capacity = 0;
         input->arr = 0;        
-        *state = SEMI_COLON;
+        *state = FINAL;
         break;
       case '<':
         error_and_message ("Cannot redirect multiple input");
@@ -1358,7 +1326,7 @@ after_subshell_output_state (char c, enum State *state, string *output,
         output->size = 0;
         output->capacity = 0;
         output->arr = 0;
-        *state = SEMI_COLON;
+        *state = FINAL;
         break;
       case ')':
         if (depth == 0)
@@ -1466,7 +1434,7 @@ after_after_subshell_input_state (char c, enum State *state, string *output,
         *state = PIPE;
         break;
       case ';':
-        *state = SEMI_COLON;
+        *state = FINAL;
         break;
       case '<':
         error_and_message ("Cannot redirect multiple input");
@@ -1527,7 +1495,7 @@ after_after_subshell_output_state (char c, enum State *state, string *input,
         *state = PIPE;
         break;
       case ';':
-        *state = SEMI_COLON;
+        *state = FINAL;
         break;
       case '>':
         error_and_message ("Cannot redirect multiple output");
@@ -1681,7 +1649,7 @@ parse_stream (command_stream_t s, size_t depth, bool *in_subshell)
       switch (state) 
         {
           case START:
-            start_state (c, &state, &word);
+            start_state (c, &state, &word, depth, in_subshell);
             break;
           case COMMENT_START:
             comment_state (START, c, &state);
@@ -1714,10 +1682,6 @@ parse_stream (command_stream_t s, size_t depth, bool *in_subshell)
           case SPECIAL:
             if (c != '\n')
               add_char (&word, c);
-            break;
-          case SEMI_COLON:
-            semi_colon_state (c, &state, &word, &cmd_stack, &op_stack, depth, 
-                              in_subshell);
             break;
           case PIPE:
             pipe_state (c, &state, &word, &cmd_stack, &op_stack);
