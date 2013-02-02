@@ -1274,7 +1274,7 @@ after_subshell_input_state (char c, enum State *state, string *input,
             input->size = 0;
             input->capacity = 0;
             input->arr = 0;
-            *state = AFTER_INPUT;
+            *state = AFTER_AFTER_SUBSHELL_INPUT;
           }
         break;
       case '#':

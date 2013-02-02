@@ -7,11 +7,11 @@ echo hello > file #0
 #4
 cat < file #1
 #5
-(cat | tr eo ui | grep h) < file #2
+(cat | tr eo ui | grep h) < file #1
 #6
-cat < file ; cat < file #2
+cat < file ; cat < file #1
 #7
-echo nothing > file #3
+echo nothing > file #2
 #8
 (echo hi || (echo hello && echo good bye ; (echo nothing))) #0
 
