@@ -5,9 +5,13 @@
 #include <getopt.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 #include "alloc.h"
 #include "file_tree.h"
+#include "llist.h"
 #include "command.h"
 #include "command-internals.h"
 
@@ -18,8 +22,6 @@ typedef struct command_array_{
   command_t command_tree;
   file_tree files;
   size_t ranking;
-  // TEMPORARY!!
-  size_t index;
 } command_array;
 
 static void
@@ -60,6 +62,10 @@ get_files (command_t cmd, file_tree *head)
           }
         break;
       case SUBSHELL_COMMAND:
+        if (cmd->input)
+          insert_file_tree (head, cmd->input, 0);
+        if (cmd->output)
+          insert_file_tree (head, cmd->output, 1);
         get_files (cmd->u.subshell_command, head);
         break;
     }
@@ -71,8 +77,11 @@ files_dependent (file_tree files1, file_tree files2)
   if (!files1 || !files2)
     return false; // Can't search null values
 
-  if (!files_dependent (files1->left, files2) &&
-        !files_dependent (files1->right, files2))
+  if (files_dependent (files1->left, files2))
+    return true;
+  else if (files_dependent (files1->right, files2))
+    return true;
+  else 
     {
       file_tree search = find_file (files2, files1->filename);
       // Return false if we didn't find anything
@@ -81,15 +90,11 @@ files_dependent (file_tree files1, file_tree files2)
       else // Otherwise we check if one of them is being written to
         return (files1->written_to || files2->written_to);
     }
-  else
-    return true;
 }
 
 bool
 dependent_commands_arrs (command_array cmd_arr1, command_array cmd_arr2)
 {
-  //(void) cmd_arr1, (void) cmd_arr2;
-
   return files_dependent (cmd_arr1.files, cmd_arr2.files);
 }
 
@@ -124,31 +129,23 @@ void
 place_command_by_ranking (command_array *cmd_info, command_array **cmd_arr, 
                           size_t arr_size)
 {
-  int i, j;
+  int i;
 
   // Shift everything to match ranking
   // This is definitely not the most efficient sort. However, if we don't place
   //  commands into their proper position, we could get less optimal scheduling
 
-  printf("Rank of this one: %d\n", cmd_info->ranking);
   i = (int)(arr_size);
   while (0 < i && cmd_info->ranking < (*cmd_arr)[i-1].ranking)
   {
     (*cmd_arr)[i] = (*cmd_arr)[i-1];
-    for (j = 0; j != (int)arr_size; j++) {
-      printf ("%d -- cmd: %x, files: %x, rank: %d\n",
-        j, 
-        (unsigned int)(*cmd_arr)[j].command_tree, 
-        (unsigned int)(*cmd_arr)[j].files,
-        (*cmd_arr)[j].ranking);
-      print_command ((*cmd_arr)[j].command_tree);
-    }
-    printf("ENDED\n\n\n\n");
     i--;
   }
   // initialize the values of the command
   (*cmd_arr)[i] = *cmd_info;
 
+  #ifdef DEBUG
+    int j;
     for (j = 0; j != (int)arr_size+1; j++) {
       printf ("%d -- cmd: %x, files: %x, rank: %d\n",
         j, 
@@ -158,11 +155,9 @@ place_command_by_ranking (command_array *cmd_info, command_array **cmd_arr,
       print_command ((*cmd_arr)[j].command_tree);
     }
     printf("FINAL ENDED\n\n\n\n");
-  #ifdef DEBUG
   #endif
 }
 
-int random_global = 1;
 void
 add_command_t (command_t cmd, command_array **cmd_arr,  
           size_t *arr_size, size_t *arr_capacity)
@@ -170,7 +165,6 @@ add_command_t (command_t cmd, command_array **cmd_arr,
   command_array cmd_info;
 
   cmd_info.command_tree = cmd;
-  cmd_info.index = random_global++;
 
   // Make the File Tree
   file_tree head = 0;
@@ -232,9 +226,7 @@ main (int argc, char **argv)
 
   command_t command;
   command_array *cmd_arr;
-  size_t arr_size = 0;
-  size_t arr_capacity = 2;
-  cmd_arr = checked_malloc (arr_capacity * sizeof (command_array));
+  node_t pid_list;
   bool test;
 
   if (print_tree)
@@ -249,20 +241,45 @@ main (int argc, char **argv)
   else if (time_travel)
     {
       size_t i;
-      cmd_arr = (command_array *) checked_malloc (arr_capacity * (sizeof (command_array)));
+      int status;
+      node_t n;
+
+      size_t arr_size = 0;
+      size_t arr_capacity = 2;
+      cmd_arr = checked_malloc (arr_capacity * sizeof (command_array));
+      pid_list = initialize_llist ();
+
       while ((command = read_command_stream (command_stream)))
         {
-          //printf("This is the thing\n");
           add_command_t (command, &cmd_arr, &arr_size, &arr_capacity);
         }
-      for (i = 0; i < arr_size; i++)
+      i = 0;
+      while (i < arr_size)
         {
-          printf ("# Index: %d, Rank: %d\n", cmd_arr[i].index, cmd_arr[i].ranking);
-          print_command (cmd_arr[i].command_tree);
-          //print_file_tree (cmd_arr[i].files);
-          free_command (cmd_arr[i].command_tree);
-          free_file_tree (cmd_arr[i].files);
+          int pid;
+          size_t current = cmd_arr[i].ranking;
+          while (i < arr_size && cmd_arr[i].ranking == current)
+            {
+              pid = fork();
+              if (pid == 0) // child process
+                {
+                  execute_command (cmd_arr[i].command_tree);
+                  exit (command_status (cmd_arr[i].command_tree));
+                }
+              insert_node (pid_list, pid);
+              i++;
+            }
+          for (n = pid_list->next; n != pid_list; n = n->next)
+          {
+            waitpid(n->val, &status, 0);
+          }
         }
+        // Free all the commands
+        for (i = 0; i < arr_size; i++)
+          {
+            free_command (cmd_arr[i].command_tree);
+            free_file_tree (cmd_arr[i].files);
+          }
       free (cmd_arr);
       return 0;
     }
@@ -270,7 +287,7 @@ main (int argc, char **argv)
     {
       while ((command = read_command_stream (command_stream)))
         {
-          execute_command (command, time_travel);
+          execute_command (command);
           test = command_status (command);
           free_command (command);
         }

@@ -379,7 +379,7 @@ free_command (command_t cmd)
 }
 
 void
-execute_command (command_t c, bool time_travel)
+execute_command (command_t c)
 {
   node_t n;
   /* FIXME: Replace this with your implementation.  You may need to
@@ -405,9 +405,5 @@ execute_command (command_t c, bool time_travel)
       pid_count++;
     }
 
-  time_travel = false;
-  if (time_travel) { ; }
-
   c->status = status;
-  //error (1, 0, "command execution not yet implemented");
 }
